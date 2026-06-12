@@ -41,3 +41,17 @@ Build a minimal proof of concept:
 3. Play a selected file locally on the Pi using mpv.
 4. Expose selected files by HTTP URL.
 5. Send a selected file URL to the Bose speaker.
+
+
+## Design Decisions
+
+- Music browsing will be folder-based only for the first version.
+- MP3 support is required.
+- FLAC support is nice to have for local Pi playback.
+- Bose FLAC support is uncertain and should not be assumed.
+- Only one Bose speaker is required initially.
+- Bose speaker will use a fixed IP address configured in settings.
+- Single-user control is acceptable for the first version.
+- Playlists will be temporary queues only for the first version.
+- SMB will be used for NAS sharing.
+- The app should support switching output between Pi audio and Bose without rebuilding the queue.
