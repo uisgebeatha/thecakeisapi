@@ -2,7 +2,7 @@
 
 thecakeisapi is a lightweight browser-based music player for a Raspberry Pi 4B running Ubuntu.
 
-The first version is intentionally small: FastAPI serves a plain web interface and exposes basic health and library status endpoints. Music playback is not implemented yet.
+The first version is intentionally small: FastAPI serves a plain web interface for browsing folders and exposes basic library endpoints. Music playback is not implemented yet.
 
 ## Requirements
 
@@ -32,6 +32,8 @@ uvicorn thecakeisapi.main:app --host 0.0.0.0 --port 8000
 ```
 
 Open `http://localhost:8000` in a browser.
+
+The web interface shows folders and supported audio files from the configured music root. Folder rows can be opened in the browser; file rows are display-only until playback is added.
 
 ## Configuration
 
@@ -93,7 +95,6 @@ The browse endpoint returns directories and supported audio files only. Supporte
 
 ## Not Implemented Yet
 
-- Web interface folder display
 - Queue management
 - Local mpv playback
 - Bose SoundTouch playback

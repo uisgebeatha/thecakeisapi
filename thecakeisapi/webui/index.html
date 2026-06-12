@@ -15,10 +15,16 @@
       </header>
 
       <section class="browser">
-        <h2>Music Library</h2>
-        <p id="library-status">Checking configured music folder...</p>
+        <div class="browser-header">
+          <div>
+            <h2>Music Library</h2>
+            <p id="library-path" class="path-label">/</p>
+          </div>
+          <button id="up-button" class="nav-button" type="button" disabled>Up</button>
+        </div>
+        <p id="library-status" class="message">Checking configured music folder...</p>
+        <ul id="library-list" class="library-list" aria-label="Music library"></ul>
       </section>
     </main>
   </body>
 </html>
-

@@ -13,6 +13,10 @@ body {
   margin: 0;
 }
 
+button {
+  font: inherit;
+}
+
 .shell {
   min-height: 100vh;
 }
@@ -59,9 +63,116 @@ h1 {
   padding: 1rem;
 }
 
-.browser h2 {
+.browser-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
   margin-bottom: 0.5rem;
+}
+
+.browser h2 {
   font-size: 1rem;
+}
+
+.path-label,
+.message,
+.entry-meta {
+  color: #58606b;
+}
+
+.path-label {
+  margin-top: 0.2rem;
+  font-family: "Cascadia Mono", "Segoe UI Mono", monospace;
+  font-size: 0.85rem;
+  overflow-wrap: anywhere;
+}
+
+.nav-button {
+  min-width: 4rem;
+  border: 1px solid #9aa2ad;
+  border-radius: 0.35rem;
+  padding: 0.4rem 0.6rem;
+  background: #ffffff;
+  color: #1c1f23;
+  cursor: pointer;
+}
+
+.nav-button:disabled {
+  cursor: default;
+  opacity: 0.45;
+}
+
+.message {
+  min-height: 1.4rem;
+  margin-bottom: 0.75rem;
+  font-size: 0.95rem;
+}
+
+.library-list {
+  display: grid;
+  gap: 0.35rem;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.entry-button {
+  display: grid;
+  grid-template-columns: 3rem minmax(0, 1fr);
+  align-items: center;
+  width: 100%;
+  min-height: 3.25rem;
+  border: 1px solid #d8d8d0;
+  border-radius: 0.35rem;
+  padding: 0;
+  background: #ffffff;
+  color: #1c1f23;
+  text-align: left;
+}
+
+.entry-button:not(:disabled) {
+  cursor: pointer;
+}
+
+.entry-button:not(:disabled):hover,
+.entry-button:not(:disabled):focus-visible {
+  border-color: #627084;
+  background: #f0f3f6;
+}
+
+.entry-button:disabled {
+  opacity: 1;
+}
+
+.entry-icon {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  align-self: stretch;
+  border-right: 1px solid #d8d8d0;
+  color: #45505d;
+  font-size: 0.72rem;
+  font-weight: 700;
+}
+
+.entry-details {
+  display: grid;
+  gap: 0.2rem;
+  min-width: 0;
+  padding: 0.45rem 0.65rem;
+}
+
+.entry-name {
+  overflow: hidden;
+  font-size: 0.98rem;
+  font-weight: 600;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.entry-meta {
+  font-size: 0.82rem;
 }
 
 @media (prefers-color-scheme: dark) {
@@ -86,5 +197,28 @@ h1 {
   .status[data-state="error"] {
     color: #ee9c9c;
   }
-}
 
+  .path-label,
+  .message,
+  .entry-meta {
+    color: #b5bbc4;
+  }
+
+  .nav-button,
+  .entry-button {
+    border-color: #30343a;
+    background: #202328;
+    color: #f2f2ec;
+  }
+
+  .entry-button:not(:disabled):hover,
+  .entry-button:not(:disabled):focus-visible {
+    border-color: #778293;
+    background: #292d33;
+  }
+
+  .entry-icon {
+    border-right-color: #30343a;
+    color: #c6ccd5;
+  }
+}

@@ -4,7 +4,7 @@
 
 - [x] Create FastAPI application
 - [x] Create settings file support
-- Create web interface
+- [x] Create web interface
 - [x] Browse folders under configured music path
-- Display files and folders
+- [x] Display files and folders
 - Play MP3 locally using mpv
