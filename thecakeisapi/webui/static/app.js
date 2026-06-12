@@ -1,5 +1,6 @@
 const healthBadge = document.querySelector("#health");
 const libraryStatus = document.querySelector("#library-status");
+const playbackStatus = document.querySelector("#playback-status");
 const libraryPath = document.querySelector("#library-path");
 const libraryList = document.querySelector("#library-list");
 const upButton = document.querySelector("#up-button");
@@ -30,6 +31,7 @@ async function loadApp() {
 
 async function loadDirectory(path) {
   libraryStatus.textContent = "Loading...";
+  playbackStatus.textContent = "";
   clearLibraryList();
 
   try {
@@ -88,13 +90,16 @@ function createEntry(entry) {
   const item = document.createElement("li");
   item.className = "library-item";
 
-  const button = document.createElement("button");
-  button.className = "entry-button";
-  button.type = "button";
-  button.disabled = entry.type !== "directory";
+  const row = document.createElement("div");
+  row.className = "entry-row";
+
+  const detailsElement =
+    entry.type === "directory" ? document.createElement("button") : document.createElement("div");
+  detailsElement.className = "entry-details-button";
 
   if (entry.type === "directory") {
-    button.addEventListener("click", () => navigateTo(entry.path));
+    detailsElement.type = "button";
+    detailsElement.addEventListener("click", () => navigateTo(entry.path));
   }
 
   const icon = document.createElement("span");
@@ -113,9 +118,49 @@ function createEntry(entry) {
   meta.textContent = entry.type === "directory" ? "Folder" : formatSize(entry.size_bytes);
 
   details.append(name, meta);
-  button.append(icon, details);
-  item.appendChild(button);
+  detailsElement.append(icon, details);
+  row.appendChild(detailsElement);
+
+  if (entry.type === "file") {
+    const playButton = document.createElement("button");
+    playButton.className = "play-button";
+    playButton.type = "button";
+    playButton.textContent = "Play on Pi";
+    playButton.addEventListener("click", () => playOnPi(entry, playButton));
+    row.appendChild(playButton);
+  }
+
+  item.appendChild(row);
   return item;
+}
+
+async function playOnPi(entry, playButton) {
+  const originalText = playButton.textContent;
+  playButton.disabled = true;
+  playButton.textContent = "Starting";
+  playbackStatus.textContent = `Starting ${entry.name} on Pi...`;
+  playbackStatus.dataset.state = "";
+
+  try {
+    const params = new URLSearchParams({ path: entry.path });
+    const response = await fetch(`/api/player/local/play?${params.toString()}`, {
+      method: "POST",
+    });
+
+    if (!response.ok) {
+      const error = await response.json();
+      throw new Error(error.detail || "Playback request failed");
+    }
+
+    playbackStatus.textContent = `Playing on Pi: ${entry.name}`;
+    playbackStatus.dataset.state = "ok";
+  } catch (error) {
+    playbackStatus.textContent = `Could not start playback: ${error.message}`;
+    playbackStatus.dataset.state = "error";
+  } finally {
+    playButton.disabled = false;
+    playButton.textContent = originalText;
+  }
 }
 
 function navigateTo(path) {

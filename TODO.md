@@ -13,3 +13,4 @@
 
 - [x] Serve supported audio files from the configured music library
 - [x] Add local mpv playback backend and start endpoint
+- [x] Add Play on Pi button to the web interface

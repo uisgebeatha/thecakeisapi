@@ -117,32 +117,44 @@ h1 {
   list-style: none;
 }
 
-.entry-button {
+.entry-row {
   display: grid;
-  grid-template-columns: 3rem minmax(0, 1fr);
+  grid-template-columns: minmax(0, 1fr) auto;
   align-items: center;
   width: 100%;
   min-height: 3.25rem;
   border: 1px solid #d8d8d0;
   border-radius: 0.35rem;
+  background: #ffffff;
+  overflow: hidden;
+}
+
+.entry-details-button {
+  display: grid;
+  grid-template-columns: 3rem minmax(0, 1fr);
+  align-items: center;
+  align-self: stretch;
+  min-width: 0;
+  border: 0;
   padding: 0;
   background: #ffffff;
   color: #1c1f23;
   text-align: left;
 }
 
-.entry-button:not(:disabled) {
+button.entry-details-button {
   cursor: pointer;
 }
 
-.entry-button:not(:disabled):hover,
-.entry-button:not(:disabled):focus-visible {
+.entry-row:has(button.entry-details-button:hover),
+.entry-row:has(button.entry-details-button:focus-visible) {
   border-color: #627084;
   background: #f0f3f6;
 }
 
-.entry-button:disabled {
-  opacity: 1;
+.entry-row:has(button.entry-details-button:hover) .entry-details-button,
+.entry-row:has(button.entry-details-button:focus-visible) .entry-details-button {
+  background: #f0f3f6;
 }
 
 .entry-icon {
@@ -175,6 +187,37 @@ h1 {
   font-size: 0.82rem;
 }
 
+.play-button {
+  align-self: stretch;
+  border: 0;
+  border-left: 1px solid #d8d8d0;
+  padding: 0 0.8rem;
+  background: #eef4f8;
+  color: #1e4158;
+  cursor: pointer;
+  font-size: 0.9rem;
+  font-weight: 700;
+  white-space: nowrap;
+}
+
+.play-button:hover,
+.play-button:focus-visible {
+  background: #dfeaf1;
+}
+
+.play-button:disabled {
+  cursor: default;
+  opacity: 0.65;
+}
+
+.message[data-state="ok"] {
+  color: #216343;
+}
+
+.message[data-state="error"] {
+  color: #923838;
+}
+
 @media (prefers-color-scheme: dark) {
   :root {
     background: #17191c;
@@ -205,20 +248,45 @@ h1 {
   }
 
   .nav-button,
-  .entry-button {
+  .entry-row,
+  .entry-details-button {
     border-color: #30343a;
     background: #202328;
     color: #f2f2ec;
   }
 
-  .entry-button:not(:disabled):hover,
-  .entry-button:not(:disabled):focus-visible {
+  .entry-row:has(button.entry-details-button:hover),
+  .entry-row:has(button.entry-details-button:focus-visible) {
     border-color: #778293;
+    background: #292d33;
+  }
+
+  .entry-row:has(button.entry-details-button:hover) .entry-details-button,
+  .entry-row:has(button.entry-details-button:focus-visible) .entry-details-button {
     background: #292d33;
   }
 
   .entry-icon {
     border-right-color: #30343a;
     color: #c6ccd5;
+  }
+
+  .play-button {
+    border-left-color: #30343a;
+    background: #243441;
+    color: #dceef8;
+  }
+
+  .play-button:hover,
+  .play-button:focus-visible {
+    background: #2f4251;
+  }
+
+  .message[data-state="ok"] {
+    color: #8fd8b5;
+  }
+
+  .message[data-state="error"] {
+    color: #ee9c9c;
   }
 }

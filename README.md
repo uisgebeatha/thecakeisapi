@@ -35,7 +35,7 @@ uvicorn thecakeisapi.main:app --host 0.0.0.0 --port 8000
 
 Open `http://localhost:8000` in a browser.
 
-The web interface shows folders and supported audio files from the configured music root. Folder rows can be opened in the browser; file rows are display-only until playback is added.
+The web interface shows folders and supported audio files from the configured music root. Folder rows can be opened in the browser, and file rows include a Play on Pi button for local mpv playback.
 
 ## Configuration
 
@@ -124,5 +124,5 @@ The local playback endpoint starts `mpv` on the machine running the FastAPI app.
 ## Not Implemented Yet
 
 - Queue management
-- Local playback controls
+- Pause and stop controls
 - Bose SoundTouch playback
