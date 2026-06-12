@@ -14,18 +14,45 @@
         <span id="health" class="status">Starting</span>
       </header>
 
-      <section class="browser">
-        <div class="browser-header">
-          <div>
-            <h2>Music Library</h2>
-            <p id="library-path" class="path-label">/</p>
+      <div class="content">
+        <section class="browser">
+          <div class="browser-header">
+            <div>
+              <h2>Music Library</h2>
+              <p id="library-path" class="path-label">/</p>
+            </div>
+            <button id="up-button" class="nav-button" type="button" disabled>Up</button>
           </div>
-          <button id="up-button" class="nav-button" type="button" disabled>Up</button>
-        </div>
-        <p id="library-status" class="message">Checking configured music folder...</p>
-        <p id="playback-status" class="message" aria-live="polite"></p>
-        <ul id="library-list" class="library-list" aria-label="Music library"></ul>
-      </section>
+          <p id="library-status" class="message">Checking configured music folder...</p>
+          <ul id="library-list" class="library-list" aria-label="Music library"></ul>
+        </section>
+
+        <aside class="playlist-panel">
+          <h2>Queue</h2>
+          <p id="queue-status" class="message">No tracks queued.</p>
+          <ol id="queue-list" class="queue-list" aria-label="Playback queue"></ol>
+        </aside>
+      </div>
+
+      <footer class="player-bar">
+        <section class="now-playing" aria-label="Now playing">
+          <h2>Now Playing</h2>
+          <p id="now-playing-title">Nothing playing</p>
+          <p id="playback-status" class="message" aria-live="polite"></p>
+        </section>
+        <section class="transport" aria-label="Playback controls">
+          <button id="previous-button" class="control-button" type="button">Previous Track</button>
+          <button id="play-button" class="control-button primary" type="button">Play</button>
+          <button id="pause-button" class="control-button" type="button">Pause</button>
+          <button id="stop-button" class="control-button" type="button">Stop</button>
+          <button id="next-button" class="control-button" type="button">Next Track</button>
+        </section>
+        <section class="timer" aria-label="Track timer">
+          <span id="elapsed-time">0:00</span>
+          <progress id="track-progress" value="0" max="100"></progress>
+          <span id="duration-time">--:--</span>
+        </section>
+      </footer>
     </main>
   </body>
 </html>

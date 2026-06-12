@@ -19,6 +19,7 @@ button {
 
 .shell {
   min-height: 100vh;
+  padding-bottom: 9.5rem;
 }
 
 .topbar {
@@ -59,8 +60,20 @@ h1 {
   color: #923838;
 }
 
-.browser {
+.content {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 18rem;
+  min-height: calc(100vh - 14rem);
+}
+
+.browser,
+.playlist-panel {
   padding: 1rem;
+}
+
+.playlist-panel {
+  border-left: 1px solid #d8d8d0;
+  background: #fbfbf8;
 }
 
 .browser-header {
@@ -71,7 +84,9 @@ h1 {
   margin-bottom: 0.5rem;
 }
 
-.browser h2 {
+.browser h2,
+.playlist-panel h2,
+.now-playing h2 {
   font-size: 1rem;
 }
 
@@ -115,6 +130,24 @@ h1 {
   margin: 0;
   padding: 0;
   list-style: none;
+}
+
+.queue-list {
+  display: grid;
+  gap: 0.25rem;
+  margin: 0;
+  padding-left: 1.25rem;
+}
+
+.queue-item {
+  padding: 0.2rem 0;
+  color: #58606b;
+  font-size: 0.9rem;
+}
+
+.queue-item.current {
+  color: #1c1f23;
+  font-weight: 700;
 }
 
 .entry-row {
@@ -218,6 +251,92 @@ button.entry-details-button {
   color: #923838;
 }
 
+.player-bar {
+  position: fixed;
+  right: 0;
+  bottom: 0;
+  left: 0;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 0.65rem;
+  border-top: 1px solid #c8cbc6;
+  padding: 0.75rem 1rem;
+  background: #ffffff;
+  box-shadow: 0 -0.25rem 0.85rem rgba(24, 28, 32, 0.08);
+}
+
+.now-playing {
+  display: grid;
+  gap: 0.15rem;
+}
+
+#now-playing-title {
+  overflow: hidden;
+  font-weight: 700;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.transport {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.45rem;
+}
+
+.control-button {
+  border: 1px solid #9aa2ad;
+  border-radius: 0.35rem;
+  padding: 0.45rem 0.7rem;
+  background: #f7f7f3;
+  color: #1c1f23;
+  cursor: pointer;
+  font-weight: 700;
+}
+
+.control-button.primary {
+  border-color: #33845b;
+  background: #e8f4ee;
+  color: #216343;
+}
+
+.control-button:hover,
+.control-button:focus-visible {
+  background: #edf0f2;
+}
+
+.control-button:disabled {
+  cursor: default;
+  opacity: 0.45;
+}
+
+.timer {
+  display: grid;
+  grid-template-columns: 3.5rem minmax(0, 1fr) 3.5rem;
+  align-items: center;
+  gap: 0.5rem;
+  font-family: "Cascadia Mono", "Segoe UI Mono", monospace;
+  font-size: 0.85rem;
+}
+
+progress {
+  width: 100%;
+}
+
+@media (max-width: 760px) {
+  .shell {
+    padding-bottom: 13rem;
+  }
+
+  .content {
+    grid-template-columns: 1fr;
+  }
+
+  .playlist-panel {
+    border-top: 1px solid #d8d8d0;
+    border-left: 0;
+  }
+}
+
 @media (prefers-color-scheme: dark) {
   :root {
     background: #17191c;
@@ -227,6 +346,11 @@ button.entry-details-button {
   .topbar {
     border-bottom-color: #30343a;
     background: #202328;
+  }
+
+  .playlist-panel {
+    border-color: #30343a;
+    background: #1c1f23;
   }
 
   .status {
@@ -288,5 +412,36 @@ button.entry-details-button {
 
   .message[data-state="error"] {
     color: #ee9c9c;
+  }
+
+  .queue-item {
+    color: #b5bbc4;
+  }
+
+  .queue-item.current {
+    color: #f2f2ec;
+  }
+
+  .player-bar {
+    border-top-color: #30343a;
+    background: #202328;
+    box-shadow: 0 -0.25rem 0.85rem rgba(0, 0, 0, 0.3);
+  }
+
+  .control-button {
+    border-color: #69707a;
+    background: #292d33;
+    color: #f2f2ec;
+  }
+
+  .control-button.primary {
+    border-color: #5dad82;
+    background: #20352b;
+    color: #8fd8b5;
+  }
+
+  .control-button:hover,
+  .control-button:focus-visible {
+    background: #333840;
   }
 }

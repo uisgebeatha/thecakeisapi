@@ -2,7 +2,7 @@
 
 thecakeisapi is a lightweight browser-based music player for a Raspberry Pi 4B running Ubuntu.
 
-The first version is intentionally small: FastAPI serves a plain web interface for browsing folders and exposes basic library endpoints. Music playback is not implemented yet.
+The first version is intentionally small: FastAPI serves a plain web interface for browsing folders and controlling local Raspberry Pi playback with mpv.
 
 ## Requirements
 
@@ -35,7 +35,7 @@ uvicorn thecakeisapi.main:app --host 0.0.0.0 --port 8000
 
 Open `http://localhost:8000` in a browser.
 
-The web interface shows folders and supported audio files from the configured music root. Folder rows can be opened in the browser, and file rows include a Play on Pi button for local mpv playback.
+The web interface shows folders and supported audio files from the configured music root. Folder rows can be opened in the browser, file rows include a Play on Pi button, and the bottom playback bar shows shared local playback state for all connected browsers.
 
 ## Configuration
 
@@ -90,6 +90,12 @@ Configuration is validated when the app starts. The music root, `mpv_command`, a
 - `GET /api/library/browse` lists folders and supported audio files under the configured music root
 - `GET /api/library/file` streams a supported audio file from the configured music root
 - `POST /api/player/local/play` starts local playback of a supported library file using mpv
+- `POST /api/player/local/resume` resumes local mpv playback
+- `POST /api/player/local/pause` pauses local mpv playback
+- `POST /api/player/local/stop` stops local mpv playback
+- `POST /api/player/local/next` plays the next track in the temporary queue
+- `POST /api/player/local/previous` plays the previous track in the temporary queue
+- `GET /api/player/local/status` returns now-playing state, queue, elapsed time, and duration when mpv reports it
 
 To browse the root music folder:
 
@@ -119,10 +125,11 @@ To start local playback on the Raspberry Pi, pass the same relative file path:
 curl -X POST "http://localhost:8000/api/player/local/play?path=Albums/example.mp3"
 ```
 
-The local playback endpoint starts `mpv` on the machine running the FastAPI app. It launches mpv with IPC enabled using `mpv_ipc_path`, but playback controls are not exposed yet.
+The local playback endpoint starts `mpv` on the machine running the FastAPI app. It launches mpv with IPC enabled using `mpv_ipc_path`, and the local playback controls use that IPC socket where possible.
+
+The web UI sends the currently visible audio files as a temporary queue when Play on Pi is clicked. Queue state is kept in memory only and is shared by browsers connected to the same running app process.
 
 ## Not Implemented Yet
 
-- Queue management
-- Pause and stop controls
+- Persistent playlists
 - Bose SoundTouch playback

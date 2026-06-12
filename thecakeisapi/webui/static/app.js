@@ -3,13 +3,28 @@ const libraryStatus = document.querySelector("#library-status");
 const playbackStatus = document.querySelector("#playback-status");
 const libraryPath = document.querySelector("#library-path");
 const libraryList = document.querySelector("#library-list");
+const queueStatus = document.querySelector("#queue-status");
+const queueList = document.querySelector("#queue-list");
+const nowPlayingTitle = document.querySelector("#now-playing-title");
+const elapsedTime = document.querySelector("#elapsed-time");
+const durationTime = document.querySelector("#duration-time");
+const trackProgress = document.querySelector("#track-progress");
 const upButton = document.querySelector("#up-button");
+const previousButton = document.querySelector("#previous-button");
+const playButton = document.querySelector("#play-button");
+const pauseButton = document.querySelector("#pause-button");
+const stopButton = document.querySelector("#stop-button");
+const nextButton = document.querySelector("#next-button");
+
+let currentDirectoryFiles = [];
+let lastPlaybackState = null;
 
 async function loadApp() {
   try {
-    const [healthResponse, browseResponse] = await Promise.all([
+    const [healthResponse, browseResponse, playbackResponse] = await Promise.all([
       fetch("/api/health"),
       fetchBrowse(currentPath()),
+      fetch("/api/player/local/status"),
     ]);
 
     if (!healthResponse.ok) {
@@ -21,6 +36,7 @@ async function loadApp() {
     healthBadge.textContent = health.status;
     healthBadge.dataset.state = "ok";
     await renderBrowseResponse(browseResponse);
+    await renderPlaybackResponse(playbackResponse);
   } catch (error) {
     healthBadge.textContent = "Offline";
     healthBadge.dataset.state = "error";
@@ -66,6 +82,7 @@ function renderDirectory(directory) {
   libraryPath.textContent = `/${directory.path}`;
   upButton.disabled = directory.parent_path === null;
   upButton.dataset.path = directory.parent_path || "";
+  currentDirectoryFiles = directory.files.map((entry) => entry.path);
 
   clearLibraryList();
 
@@ -145,6 +162,12 @@ async function playOnPi(entry, playButton) {
     const params = new URLSearchParams({ path: entry.path });
     const response = await fetch(`/api/player/local/play?${params.toString()}`, {
       method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        queue_paths: currentDirectoryFiles,
+      }),
     });
 
     if (!response.ok) {
@@ -154,6 +177,7 @@ async function playOnPi(entry, playButton) {
 
     playbackStatus.textContent = `Playing on Pi: ${entry.name}`;
     playbackStatus.dataset.state = "ok";
+    await refreshPlaybackStatus();
   } catch (error) {
     playbackStatus.textContent = `Could not start playback: ${error.message}`;
     playbackStatus.dataset.state = "error";
@@ -161,6 +185,103 @@ async function playOnPi(entry, playButton) {
     playButton.disabled = false;
     playButton.textContent = originalText;
   }
+}
+
+async function sendTransportCommand(endpoint) {
+  playbackStatus.textContent = "Updating playback...";
+  playbackStatus.dataset.state = "";
+
+  try {
+    const response = await fetch(endpoint, { method: "POST" });
+    await renderPlaybackResponse(response);
+  } catch (error) {
+    playbackStatus.textContent = `Playback command failed: ${error.message}`;
+    playbackStatus.dataset.state = "error";
+  }
+}
+
+async function refreshPlaybackStatus() {
+  try {
+    const response = await fetch("/api/player/local/status");
+    await renderPlaybackResponse(response);
+  } catch (error) {
+    playbackStatus.textContent = "Playback status is unavailable.";
+    playbackStatus.dataset.state = "error";
+  }
+}
+
+async function renderPlaybackResponse(response) {
+  if (!response.ok) {
+    const error = await response.json();
+    throw new Error(error.detail || "Playback request failed");
+  }
+
+  const playbackState = await response.json();
+  lastPlaybackState = playbackState;
+  renderPlaybackState(playbackState);
+}
+
+function renderPlaybackState(playbackState) {
+  const nowPlaying = playbackState.now_playing;
+  nowPlayingTitle.textContent = nowPlaying ? nowPlaying.name : "Nothing playing";
+  playbackStatus.textContent = playbackMessage(playbackState);
+  playbackStatus.dataset.state = playbackState.state === "stopped" ? "" : "ok";
+
+  renderTimer(playbackState);
+  renderQueue(playbackState.queue || []);
+  updateTransportButtons(playbackState);
+}
+
+function playbackMessage(playbackState) {
+  if (playbackState.state === "playing") {
+    return "Playing on Pi";
+  }
+
+  if (playbackState.state === "paused") {
+    return "Paused";
+  }
+
+  return "Stopped";
+}
+
+function renderTimer(playbackState) {
+  const elapsed = playbackState.elapsed_seconds;
+  const duration = playbackState.duration_seconds;
+
+  elapsedTime.textContent = formatTime(elapsed);
+  durationTime.textContent = duration === null ? "--:--" : formatTime(duration);
+
+  if (duration && elapsed !== null) {
+    trackProgress.value = Math.min(100, Math.max(0, (elapsed / duration) * 100));
+  } else {
+    trackProgress.value = 0;
+  }
+}
+
+function renderQueue(queue) {
+  queueList.replaceChildren();
+  queueStatus.textContent = queue.length ? `${queue.length} tracks queued` : "No tracks queued.";
+
+  for (const track of queue) {
+    const item = document.createElement("li");
+    item.className = track.is_current ? "queue-item current" : "queue-item";
+    item.textContent = track.name;
+    queueList.appendChild(item);
+  }
+}
+
+function updateTransportButtons(playbackState) {
+  const hasTrack = Boolean(playbackState.now_playing);
+  const isPlaying = playbackState.state === "playing";
+  const isPaused = playbackState.state === "paused";
+
+  playButton.disabled = !hasTrack || isPlaying;
+  pauseButton.disabled = !isPlaying;
+  stopButton.disabled = !hasTrack || playbackState.state === "stopped";
+  previousButton.disabled = !hasTrack;
+  nextButton.disabled = !hasTrack;
+
+  playButton.textContent = isPaused ? "Play" : "Play";
 }
 
 function navigateTo(path) {
@@ -188,8 +309,39 @@ function formatSize(sizeBytes) {
   return `${(sizeBytes / 1024 / 1024).toFixed(1)} MB`;
 }
 
+function formatTime(seconds) {
+  if (seconds === null || seconds === undefined || Number.isNaN(seconds)) {
+    return "0:00";
+  }
+
+  const safeSeconds = Math.max(0, Math.floor(seconds));
+  const minutes = Math.floor(safeSeconds / 60);
+  const remainingSeconds = safeSeconds % 60;
+  return `${minutes}:${remainingSeconds.toString().padStart(2, "0")}`;
+}
+
 upButton.addEventListener("click", () => {
   navigateTo(upButton.dataset.path || "");
+});
+
+previousButton.addEventListener("click", () => {
+  sendTransportCommand("/api/player/local/previous");
+});
+
+playButton.addEventListener("click", () => {
+  sendTransportCommand("/api/player/local/resume");
+});
+
+pauseButton.addEventListener("click", () => {
+  sendTransportCommand("/api/player/local/pause");
+});
+
+stopButton.addEventListener("click", () => {
+  sendTransportCommand("/api/player/local/stop");
+});
+
+nextButton.addEventListener("click", () => {
+  sendTransportCommand("/api/player/local/next");
 });
 
 window.addEventListener("hashchange", () => {
@@ -197,3 +349,8 @@ window.addEventListener("hashchange", () => {
 });
 
 loadApp();
+setInterval(() => {
+  if (lastPlaybackState !== null) {
+    refreshPlaybackStatus();
+  }
+}, 1000);
