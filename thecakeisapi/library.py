@@ -2,6 +2,10 @@ from pathlib import Path
 
 
 SUPPORTED_AUDIO_EXTENSIONS = {".flac", ".mp3"}
+AUDIO_MEDIA_TYPES = {
+    ".flac": "audio/flac",
+    ".mp3": "audio/mpeg",
+}
 
 
 class LibraryError(Exception):
@@ -14,6 +18,10 @@ class LibraryPathError(LibraryError):
 
 class LibraryNotFoundError(LibraryError):
     """Raised when the configured library path cannot be browsed."""
+
+
+class UnsupportedAudioFileError(LibraryError):
+    """Raised when a path does not point to a supported audio file."""
 
 
 def get_library_status(music_root: Path) -> dict[str, object]:
@@ -69,6 +77,25 @@ def resolve_library_path(music_root: Path, requested_path: str) -> Path:
 
 def is_supported_audio_file(path: Path) -> bool:
     return path.is_file() and path.suffix.casefold() in SUPPORTED_AUDIO_EXTENSIONS
+
+
+def resolve_audio_file(music_root: Path, requested_path: str) -> Path:
+    root_path = music_root.resolve()
+    if not root_path.is_dir():
+        raise LibraryNotFoundError("Music root does not exist or is not a directory")
+
+    file_path = resolve_library_path(root_path, requested_path)
+    if not file_path.is_file():
+        raise LibraryNotFoundError("Requested path does not exist or is not a file")
+
+    if not is_supported_audio_file(file_path):
+        raise UnsupportedAudioFileError("Requested file type is not supported")
+
+    return file_path
+
+
+def audio_media_type(path: Path) -> str:
+    return AUDIO_MEDIA_TYPES[path.suffix.casefold()]
 
 
 def _directory_entry(root_path: Path, directory_path: Path) -> dict[str, object]:

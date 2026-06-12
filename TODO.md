@@ -8,3 +8,7 @@
 - [x] Browse folders under configured music path
 - [x] Display files and folders
 - Play MP3 locally using mpv
+
+## Playback Preparation
+
+- [x] Serve supported audio files from the configured music library

@@ -7,8 +7,11 @@ from fastapi.staticfiles import StaticFiles
 from .library import (
     LibraryNotFoundError,
     LibraryPathError,
+    UnsupportedAudioFileError,
+    audio_media_type,
     get_library_status,
     list_directory,
+    resolve_audio_file,
 )
 from .settings import Settings
 
@@ -57,6 +60,23 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             raise HTTPException(status_code=400, detail=str(error)) from error
         except LibraryNotFoundError as error:
             raise HTTPException(status_code=404, detail=str(error)) from error
+
+    @app.get("/api/library/file")
+    def stream_audio_file(path: str) -> FileResponse:
+        try:
+            file_path = resolve_audio_file(app_settings.music_root, path)
+        except LibraryPathError as error:
+            raise HTTPException(status_code=400, detail=str(error)) from error
+        except LibraryNotFoundError as error:
+            raise HTTPException(status_code=404, detail=str(error)) from error
+        except UnsupportedAudioFileError as error:
+            raise HTTPException(status_code=415, detail=str(error)) from error
+
+        return FileResponse(
+            file_path,
+            media_type=audio_media_type(file_path),
+            filename=file_path.name,
+        )
 
     return app
 

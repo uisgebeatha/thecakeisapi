@@ -78,6 +78,7 @@ Configuration is validated when the app starts. The music root must not be empty
 - `GET /api/settings` returns active settings and the loaded config path
 - `GET /api/library/status` reports whether the configured music folder exists
 - `GET /api/library/browse` lists folders and supported audio files under the configured music root
+- `GET /api/library/file` streams a supported audio file from the configured music root
 
 To browse the root music folder:
 
@@ -92,6 +93,14 @@ curl "http://localhost:8000/api/library/browse?path=Albums"
 ```
 
 The browse endpoint returns directories and supported audio files only. Supported extensions are currently `.mp3` and `.flac`. Requested paths must stay inside the configured music root; absolute paths and path traversal attempts are rejected.
+
+To stream a supported audio file, pass the relative file path returned by the browse endpoint:
+
+```bash
+curl "http://localhost:8000/api/library/file?path=Albums/example.mp3" --output example.mp3
+```
+
+Only MP3 and FLAC files are served. The file endpoint uses the same path traversal protection as browsing, returns `audio/mpeg` for MP3 files, and returns `audio/flac` for FLAC files.
 
 ## Not Implemented Yet
 
