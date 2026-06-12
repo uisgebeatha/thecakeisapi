@@ -13,6 +13,7 @@ from .library import (
     list_directory,
     resolve_audio_file,
 )
+from .player import MpvPlayer, PlayerError
 from .settings import Settings
 
 
@@ -29,6 +30,10 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         version="0.1.0",
     )
     app.state.settings = app_settings
+    app.state.local_player = MpvPlayer(
+        app_settings.mpv_command,
+        app_settings.mpv_ipc_path,
+    )
 
     app.mount(
         "/static",
@@ -77,6 +82,20 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             media_type=audio_media_type(file_path),
             filename=file_path.name,
         )
+
+    @app.post("/api/player/local/play")
+    def play_local_file(path: str) -> dict[str, str | int | None]:
+        try:
+            file_path = resolve_audio_file(app_settings.music_root, path)
+            return app.state.local_player.play(file_path)
+        except LibraryPathError as error:
+            raise HTTPException(status_code=400, detail=str(error)) from error
+        except LibraryNotFoundError as error:
+            raise HTTPException(status_code=404, detail=str(error)) from error
+        except UnsupportedAudioFileError as error:
+            raise HTTPException(status_code=415, detail=str(error)) from error
+        except PlayerError as error:
+            raise HTTPException(status_code=503, detail=str(error)) from error
 
     return app
 

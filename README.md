@@ -7,6 +7,7 @@ The first version is intentionally small: FastAPI serves a plain web interface f
 ## Requirements
 
 - Python 3.10 or newer
+- `mpv` for local Raspberry Pi playback
 - A local music folder, defaulting to `/mnt/music`
 
 ## Setup
@@ -20,6 +21,7 @@ pip install -r requirements.txt
 On Linux or Raspberry Pi Ubuntu:
 
 ```bash
+sudo apt install mpv
 python3 -m venv .venv
 . .venv/bin/activate
 pip install -r requirements.txt
@@ -41,13 +43,17 @@ The application starts with sensible defaults if no settings file exists:
 
 - `music_root`: `/mnt/music`
 - `bose_speaker_ip`: unset
+- `mpv_command`: `mpv`
+- `mpv_ipc_path`: `/tmp/thecakeisapi-mpv.sock`
 
 For local configuration, copy `config.example.json` to `config.json` and edit it:
 
 ```json
 {
   "music_root": "/mnt/music",
-  "bose_speaker_ip": null
+  "bose_speaker_ip": null,
+  "mpv_command": "mpv",
+  "mpv_ipc_path": "/tmp/thecakeisapi-mpv.sock"
 }
 ```
 
@@ -69,7 +75,11 @@ THECAKEISAPI_MUSIC_ROOT=/path/to/music uvicorn thecakeisapi.main:app --host 0.0.
 THECAKEISAPI_BOSE_SPEAKER_IP=192.168.1.50 uvicorn thecakeisapi.main:app --host 0.0.0.0 --port 8000
 ```
 
-Configuration is validated when the app starts. The music root must not be empty, and `bose_speaker_ip` must be either `null`, omitted, or a valid IP address.
+```bash
+THECAKEISAPI_MPV_COMMAND=/usr/bin/mpv uvicorn thecakeisapi.main:app --host 0.0.0.0 --port 8000
+```
+
+Configuration is validated when the app starts. The music root, `mpv_command`, and `mpv_ipc_path` must not be empty. `bose_speaker_ip` must be either `null`, omitted, or a valid IP address.
 
 ## Current Endpoints
 
@@ -79,6 +89,7 @@ Configuration is validated when the app starts. The music root must not be empty
 - `GET /api/library/status` reports whether the configured music folder exists
 - `GET /api/library/browse` lists folders and supported audio files under the configured music root
 - `GET /api/library/file` streams a supported audio file from the configured music root
+- `POST /api/player/local/play` starts local playback of a supported library file using mpv
 
 To browse the root music folder:
 
@@ -102,8 +113,16 @@ curl "http://localhost:8000/api/library/file?path=Albums/example.mp3" --output e
 
 Only MP3 and FLAC files are served. The file endpoint uses the same path traversal protection as browsing, returns `audio/mpeg` for MP3 files, and returns `audio/flac` for FLAC files.
 
+To start local playback on the Raspberry Pi, pass the same relative file path:
+
+```bash
+curl -X POST "http://localhost:8000/api/player/local/play?path=Albums/example.mp3"
+```
+
+The local playback endpoint starts `mpv` on the machine running the FastAPI app. It launches mpv with IPC enabled using `mpv_ipc_path`, but playback controls are not exposed yet.
+
 ## Not Implemented Yet
 
 - Queue management
-- Local mpv playback
+- Local playback controls
 - Bose SoundTouch playback

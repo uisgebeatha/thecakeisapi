@@ -10,6 +10,8 @@ from typing import Any
 class Settings:
     music_root: Path = Path("/mnt/music")
     bose_speaker_ip: str | None = None
+    mpv_command: str = "mpv"
+    mpv_ipc_path: Path = Path("/tmp/thecakeisapi-mpv.sock")
     config_path: Path | None = field(default=None, repr=False)
 
     @classmethod
@@ -25,10 +27,20 @@ class Settings:
             "THECAKEISAPI_BOSE_SPEAKER_IP",
             cls._read_optional_string(config_values, "bose_speaker_ip"),
         )
+        mpv_command = os.getenv(
+            "THECAKEISAPI_MPV_COMMAND",
+            cls._read_string(config_values, "mpv_command", cls.mpv_command),
+        )
+        mpv_ipc_path = os.getenv(
+            "THECAKEISAPI_MPV_IPC_PATH",
+            cls._read_string(config_values, "mpv_ipc_path", str(cls.mpv_ipc_path)),
+        )
 
         settings = cls(
             music_root=Path(music_root),
             bose_speaker_ip=bose_speaker_ip,
+            mpv_command=mpv_command,
+            mpv_ipc_path=Path(mpv_ipc_path),
             config_path=resolved_config_path if resolved_config_path.exists() else None,
         )
         settings.validate()
@@ -42,6 +54,12 @@ class Settings:
         if not str(self.music_root).strip():
             raise ValueError("music_root must not be empty")
 
+        if not self.mpv_command.strip():
+            raise ValueError("mpv_command must not be empty")
+
+        if not str(self.mpv_ipc_path).strip():
+            raise ValueError("mpv_ipc_path must not be empty")
+
         if self.bose_speaker_ip in ("", None):
             return
 
@@ -54,6 +72,8 @@ class Settings:
         return {
             "music_root": str(self.music_root),
             "bose_speaker_ip": self.bose_speaker_ip,
+            "mpv_command": self.mpv_command,
+            "mpv_ipc_path": str(self.mpv_ipc_path),
             "config_path": str(self.config_path) if self.config_path else None,
         }
 
@@ -76,7 +96,12 @@ class Settings:
         if not isinstance(config_values, dict):
             raise ValueError("Settings file must contain a JSON object")
 
-        allowed_keys = {"music_root", "bose_speaker_ip"}
+        allowed_keys = {
+            "music_root",
+            "bose_speaker_ip",
+            "mpv_command",
+            "mpv_ipc_path",
+        }
         unknown_keys = sorted(set(config_values) - allowed_keys)
         if unknown_keys:
             joined_keys = ", ".join(unknown_keys)

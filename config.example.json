@@ -1,4 +1,6 @@
 {
   "music_root": "/mnt/music",
-  "bose_speaker_ip": null
+  "bose_speaker_ip": null,
+  "mpv_command": "mpv",
+  "mpv_ipc_path": "/tmp/thecakeisapi-mpv.sock"
 }
