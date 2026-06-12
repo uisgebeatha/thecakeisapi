@@ -2,7 +2,7 @@
 
 ## Milestone 1
 
-- Create FastAPI application
+- [x] Create FastAPI application
 - Create web interface
 - Browse folders under configured music path
 - Display files and folders
