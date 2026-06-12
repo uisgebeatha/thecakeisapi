@@ -37,8 +37,8 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         return {"status": "ok"}
 
     @app.get("/api/settings")
-    def read_settings() -> dict[str, str]:
-        return {"music_root": str(app_settings.music_root)}
+    def read_settings() -> dict[str, str | None]:
+        return app_settings.as_dict()
 
     @app.get("/api/library/status")
     def library_status() -> dict[str, object]:
@@ -48,4 +48,3 @@ def create_app(settings: Settings | None = None) -> FastAPI:
 
 
 app = create_app()
-
