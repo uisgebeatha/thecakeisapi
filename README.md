@@ -75,10 +75,25 @@ Configuration is validated when the app starts. The music root must not be empty
 - `GET /api/health` returns application health
 - `GET /api/settings` returns active settings and the loaded config path
 - `GET /api/library/status` reports whether the configured music folder exists
+- `GET /api/library/browse` lists folders and supported audio files under the configured music root
+
+To browse the root music folder:
+
+```bash
+curl "http://localhost:8000/api/library/browse"
+```
+
+To browse a subfolder, pass a relative path:
+
+```bash
+curl "http://localhost:8000/api/library/browse?path=Albums"
+```
+
+The browse endpoint returns directories and supported audio files only. Supported extensions are currently `.mp3` and `.flac`. Requested paths must stay inside the configured music root; absolute paths and path traversal attempts are rejected.
 
 ## Not Implemented Yet
 
-- Folder browsing
+- Web interface folder display
 - Queue management
 - Local mpv playback
 - Bose SoundTouch playback

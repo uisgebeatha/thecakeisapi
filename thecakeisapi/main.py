@@ -1,10 +1,15 @@
 from pathlib import Path
 
-from fastapi import FastAPI
+from fastapi import FastAPI, HTTPException
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 
-from .library import get_library_status
+from .library import (
+    LibraryNotFoundError,
+    LibraryPathError,
+    get_library_status,
+    list_directory,
+)
 from .settings import Settings
 
 
@@ -43,6 +48,15 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     @app.get("/api/library/status")
     def library_status() -> dict[str, object]:
         return get_library_status(app_settings.music_root)
+
+    @app.get("/api/library/browse")
+    def browse_library(path: str = "") -> dict[str, object]:
+        try:
+            return list_directory(app_settings.music_root, path)
+        except LibraryPathError as error:
+            raise HTTPException(status_code=400, detail=str(error)) from error
+        except LibraryNotFoundError as error:
+            raise HTTPException(status_code=404, detail=str(error)) from error
 
     return app
 
