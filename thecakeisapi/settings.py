@@ -14,6 +14,7 @@ class Settings:
     bose_api_port: int = 8090
     aftertouch_base_url: str | None = None
     public_base_url: str | None = None
+    soundtouch_cli_command: str = "soundtouch-cli"
     mpv_command: str = "mpv"
     mpv_ipc_path: Path = Path("/tmp/thecakeisapi-mpv.sock")
     config_path: Path | None = field(default=None, repr=False)
@@ -43,6 +44,14 @@ class Settings:
             "THECAKEISAPI_PUBLIC_BASE_URL",
             cls._read_optional_string(config_values, "public_base_url"),
         )
+        soundtouch_cli_command = os.getenv(
+            "THECAKEISAPI_SOUNDTOUCH_CLI_COMMAND",
+            cls._read_string(
+                config_values,
+                "soundtouch_cli_command",
+                cls.soundtouch_cli_command,
+            ),
+        )
         mpv_command = os.getenv(
             "THECAKEISAPI_MPV_COMMAND",
             cls._read_string(config_values, "mpv_command", cls.mpv_command),
@@ -58,6 +67,7 @@ class Settings:
             bose_api_port=cls._parse_int("bose_api_port", bose_api_port),
             aftertouch_base_url=aftertouch_base_url,
             public_base_url=public_base_url,
+            soundtouch_cli_command=soundtouch_cli_command,
             mpv_command=mpv_command,
             mpv_ipc_path=Path(mpv_ipc_path),
             config_path=resolved_config_path if resolved_config_path.exists() else None,
@@ -79,6 +89,9 @@ class Settings:
         if not str(self.mpv_ipc_path).strip():
             raise ValueError("mpv_ipc_path must not be empty")
 
+        if not self.soundtouch_cli_command.strip():
+            raise ValueError("soundtouch_cli_command must not be empty")
+
         if self.bose_speaker_ip not in ("", None):
             try:
                 ip_address(self.bose_speaker_ip)
@@ -98,6 +111,7 @@ class Settings:
             "bose_api_port": self.bose_api_port,
             "aftertouch_base_url": self.aftertouch_base_url,
             "public_base_url": self.public_base_url,
+            "soundtouch_cli_command": self.soundtouch_cli_command,
             "mpv_command": self.mpv_command,
             "mpv_ipc_path": str(self.mpv_ipc_path),
             "config_path": str(self.config_path) if self.config_path else None,
@@ -128,6 +142,7 @@ class Settings:
             "bose_api_port",
             "aftertouch_base_url",
             "public_base_url",
+            "soundtouch_cli_command",
             "mpv_command",
             "mpv_ipc_path",
         }

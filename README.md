@@ -46,6 +46,7 @@ The application starts with sensible defaults if no settings file exists:
 - `bose_api_port`: `8090`
 - `aftertouch_base_url`: unset
 - `public_base_url`: unset
+- `soundtouch_cli_command`: `soundtouch-cli`
 - `mpv_command`: `mpv`
 - `mpv_ipc_path`: `/tmp/thecakeisapi-mpv.sock`
 
@@ -58,6 +59,7 @@ For local configuration, copy `config.example.json` to `config.json` and edit it
   "bose_api_port": 8090,
   "aftertouch_base_url": "http://192.168.42.102",
   "public_base_url": "http://192.168.42.100:8000",
+  "soundtouch_cli_command": "soundtouch-cli",
   "mpv_command": "mpv",
   "mpv_ipc_path": "/tmp/thecakeisapi-mpv.sock"
 }
@@ -90,10 +92,14 @@ THECAKEISAPI_PUBLIC_BASE_URL=http://192.168.42.100:8000 uvicorn thecakeisapi.mai
 ```
 
 ```bash
+THECAKEISAPI_SOUNDTOUCH_CLI_COMMAND=/usr/local/bin/soundtouch-cli uvicorn thecakeisapi.main:app --host 0.0.0.0 --port 8000
+```
+
+```bash
 THECAKEISAPI_MPV_COMMAND=/usr/bin/mpv uvicorn thecakeisapi.main:app --host 0.0.0.0 --port 8000
 ```
 
-Configuration is validated when the app starts. The music root, `mpv_command`, and `mpv_ipc_path` must not be empty. `bose_speaker_ip` must be either `null`, omitted, or a valid IP address. `bose_api_port` must be between `1` and `65535`. `aftertouch_base_url` and `public_base_url` must be HTTP or HTTPS URLs when set.
+Configuration is validated when the app starts. The music root, `mpv_command`, `mpv_ipc_path`, and `soundtouch_cli_command` must not be empty. `bose_speaker_ip` must be either `null`, omitted, or a valid IP address. `bose_api_port` must be between `1` and `65535`. `aftertouch_base_url` and `public_base_url` must be HTTP or HTTPS URLs when set.
 
 For Bose playback, `public_base_url` must be the Pi 4 URL that the Bose speaker can fetch on the local network. Do not use `localhost` for this setting. The intended audio path is:
 
@@ -101,7 +107,11 @@ For Bose playback, `public_base_url` must be the Pi 4 URL that the Bose speaker 
 Bose SoundTouch -> Pi 4 /api/library/file endpoint
 ```
 
-AfterTouch can run on another machine, such as a Pi Zero. Configure its base URL with `aftertouch_base_url`.
+AfterTouch can run on another machine, such as a Pi Zero. Configure its base URL with `aftertouch_base_url`. Bose playback uses the same flow as the working manual command:
+
+```bash
+soundtouch-cli --host 192.168.42.101 source custom-radio --service-url "http://bose-controller.local" --name "Track Name" --url "<Pi 4 stream URL>"
+```
 
 ## Current Endpoints
 
@@ -126,7 +136,7 @@ AfterTouch can run on another machine, such as a Pi Zero. Configure its base URL
 - `POST /api/player/local/queue/move-down` moves a queued track down
 - `GET /api/player/local/status` returns now-playing state, queue, elapsed time, and duration when mpv reports it
 - `GET /api/player/status` returns the active playback status for the selected output
-- `POST /api/player/bose/play` sends a supported library file to Bose through AfterTouch custom playback
+- `POST /api/player/bose/play` sends a supported library file to Bose through `soundtouch-cli source custom-radio`
 - `POST /api/player/bose/resume` resends the current queue item to Bose
 - `POST /api/player/bose/next` sends the next queue item to Bose
 - `POST /api/player/bose/previous` sends the previous queue item to Bose
@@ -179,10 +189,10 @@ The Bose endpoint resolves the library path with the same traversal protection a
 http://192.168.42.100:8000/api/library/file?path=Albums%2Fexample.mp3
 ```
 
-Then it calls AfterTouch using the custom playback URL format:
+Then it runs `soundtouch-cli` using the custom-radio flow:
 
-```text
-http://192.168.42.102/custom/v1/playback/<base64-encoded stream URL>
+```bash
+soundtouch-cli --host 192.168.42.101 source custom-radio --service-url "http://192.168.42.102" --name "example.mp3" --url "http://192.168.42.100:8000/api/library/file?path=Albums%2Fexample.mp3"
 ```
 
 When this works, the Pi 4 FastAPI logs should show the Bose speaker requesting `/api/library/file`. This confirms the audio is not being proxied through the Pi Zero.

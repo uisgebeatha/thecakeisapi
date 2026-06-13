@@ -6,7 +6,7 @@ from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 
-from .bose import AfterTouchClient, BosePlaybackError, build_library_stream_url
+from .bose import BosePlaybackError, SoundTouchCliClient, build_library_stream_url
 from .library import (
     LibraryNotFoundError,
     LibraryPathError,
@@ -46,9 +46,13 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         app_settings.mpv_command,
         app_settings.mpv_ipc_path,
     )
-    app.state.aftertouch_client = (
-        AfterTouchClient(app_settings.aftertouch_base_url)
-        if app_settings.aftertouch_base_url
+    app.state.bose_client = (
+        SoundTouchCliClient(
+            app_settings.soundtouch_cli_command,
+            app_settings.bose_speaker_ip,
+            app_settings.aftertouch_base_url,
+        )
+        if app_settings.bose_speaker_ip and app_settings.aftertouch_base_url
         else None
     )
     app.state.playback_queue = PlaybackQueue()
@@ -443,7 +447,9 @@ def _play_track(app: FastAPI, track: QueueTrack) -> None:
 
 
 def _play_bose_track(app: FastAPI, track: QueueTrack) -> None:
-    if app.state.aftertouch_client is None:
+    if app.state.bose_client is None:
+        if not app.state.settings.bose_speaker_ip:
+            raise BosePlaybackError("bose_speaker_ip is not configured")
         raise BosePlaybackError("aftertouch_base_url is not configured")
 
     if not app.state.settings.public_base_url:
@@ -451,7 +457,7 @@ def _play_bose_track(app: FastAPI, track: QueueTrack) -> None:
 
     resolve_audio_file(app.state.settings.music_root, track.path)
     stream_url = build_library_stream_url(app.state.settings.public_base_url, track.path)
-    app.state.bose_playback = app.state.aftertouch_client.play_stream(stream_url)
+    app.state.bose_playback = app.state.bose_client.play_stream(track.name, stream_url)
 
 
 def _sync_finished_playback(app: FastAPI) -> None:
@@ -523,6 +529,9 @@ def _playback_status(app: FastAPI) -> dict[str, object]:
             if app.state.bose_playback
             else None,
             "playback_url": app.state.bose_playback.playback_url
+            if app.state.bose_playback
+            else None,
+            "command": app.state.bose_playback.command
             if app.state.bose_playback
             else None,
         },

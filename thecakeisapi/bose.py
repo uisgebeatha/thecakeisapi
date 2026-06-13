@@ -1,4 +1,5 @@
 import base64
+import subprocess
 from dataclasses import dataclass
 from urllib.error import URLError
 from urllib.parse import urlencode, urljoin
@@ -12,7 +13,8 @@ class BosePlaybackError(Exception):
 @dataclass(frozen=True)
 class BosePlaybackRequest:
     stream_url: str
-    playback_url: str
+    playback_url: str | None = None
+    command: list[str] | None = None
 
 
 class AfterTouchClient:
@@ -40,6 +42,66 @@ class AfterTouchClient:
         return BosePlaybackRequest(
             stream_url=stream_url,
             playback_url=playback_url,
+        )
+
+
+class SoundTouchCliClient:
+    def __init__(
+        self,
+        command: str,
+        speaker_ip: str,
+        service_url: str,
+        timeout_seconds: float = 15,
+    ) -> None:
+        self.command = command
+        self.speaker_ip = speaker_ip
+        self.service_url = service_url.rstrip("/")
+        self.timeout_seconds = timeout_seconds
+
+    def build_custom_radio_command(self, name: str, stream_url: str) -> list[str]:
+        return [
+            self.command,
+            "--host",
+            self.speaker_ip,
+            "source",
+            "custom-radio",
+            "--service-url",
+            self.service_url,
+            "--name",
+            name,
+            "--url",
+            stream_url,
+        ]
+
+    def play_stream(self, name: str, stream_url: str) -> BosePlaybackRequest:
+        command = self.build_custom_radio_command(name, stream_url)
+
+        try:
+            completed_process = subprocess.run(
+                command,
+                capture_output=True,
+                check=False,
+                text=True,
+                timeout=self.timeout_seconds,
+            )
+        except FileNotFoundError as error:
+            raise BosePlaybackError(
+                f"soundtouch-cli command was not found: {self.command}",
+            ) from error
+        except subprocess.TimeoutExpired as error:
+            raise BosePlaybackError("soundtouch-cli command timed out") from error
+        except OSError as error:
+            raise BosePlaybackError(f"soundtouch-cli command failed: {error}") from error
+
+        if completed_process.returncode != 0:
+            error_output = completed_process.stderr.strip() or completed_process.stdout.strip()
+            if not error_output:
+                error_output = f"exit code {completed_process.returncode}"
+            raise BosePlaybackError(f"soundtouch-cli playback failed: {error_output}")
+
+        return BosePlaybackRequest(
+            stream_url=stream_url,
+            command=command,
         )
 
 

@@ -1,8 +1,15 @@
 import base64
+import subprocess
 import unittest
+from unittest.mock import patch
 from urllib.parse import urlparse
 
-from thecakeisapi.bose import AfterTouchClient, build_library_stream_url
+from thecakeisapi.bose import (
+    AfterTouchClient,
+    BosePlaybackError,
+    SoundTouchCliClient,
+    build_library_stream_url,
+)
 
 
 class AfterTouchClientTests(unittest.TestCase):
@@ -32,6 +39,100 @@ class AfterTouchClientTests(unittest.TestCase):
             stream_url,
             "http://192.168.42.190:8000/api/library/file?path=Album+One%2Fsong.mp3",
         )
+
+
+class SoundTouchCliClientTests(unittest.TestCase):
+    def test_build_custom_radio_command_matches_working_cli_flow(self) -> None:
+        command = SoundTouchCliClient(
+            "soundtouch-cli",
+            "192.168.42.101",
+            "http://bose-controller.local",
+        ).build_custom_radio_command(
+            "Test MP3",
+            "http://192.168.42.190:8000/api/library/file?path=song.mp3",
+        )
+
+        self.assertEqual(
+            command,
+            [
+                "soundtouch-cli",
+                "--host",
+                "192.168.42.101",
+                "source",
+                "custom-radio",
+                "--service-url",
+                "http://bose-controller.local",
+                "--name",
+                "Test MP3",
+                "--url",
+                "http://192.168.42.190:8000/api/library/file?path=song.mp3",
+            ],
+        )
+
+    @patch("thecakeisapi.bose.subprocess.run")
+    def test_play_stream_runs_soundtouch_cli(self, run_mock) -> None:
+        run_mock.return_value = subprocess.CompletedProcess(
+            args=[],
+            returncode=0,
+            stdout="",
+            stderr="",
+        )
+
+        request = SoundTouchCliClient(
+            "soundtouch-cli",
+            "192.168.42.101",
+            "http://bose-controller.local/",
+        ).play_stream(
+            "Test MP3",
+            "http://192.168.42.190:8000/api/library/file?path=song.mp3",
+        )
+
+        self.assertEqual(request.playback_url, None)
+        self.assertEqual(
+            request.stream_url,
+            "http://192.168.42.190:8000/api/library/file?path=song.mp3",
+        )
+        run_mock.assert_called_once_with(
+            [
+                "soundtouch-cli",
+                "--host",
+                "192.168.42.101",
+                "source",
+                "custom-radio",
+                "--service-url",
+                "http://bose-controller.local",
+                "--name",
+                "Test MP3",
+                "--url",
+                "http://192.168.42.190:8000/api/library/file?path=song.mp3",
+            ],
+            capture_output=True,
+            check=False,
+            text=True,
+            timeout=15,
+        )
+
+    @patch("thecakeisapi.bose.subprocess.run")
+    def test_play_stream_reports_cli_failure_output(self, run_mock) -> None:
+        run_mock.return_value = subprocess.CompletedProcess(
+            args=[],
+            returncode=1,
+            stdout="",
+            stderr="speaker not found",
+        )
+
+        with self.assertRaisesRegex(
+            BosePlaybackError,
+            "soundtouch-cli playback failed: speaker not found",
+        ):
+            SoundTouchCliClient(
+                "soundtouch-cli",
+                "192.168.42.101",
+                "http://bose-controller.local",
+            ).play_stream(
+                "Test MP3",
+                "http://192.168.42.190:8000/api/library/file?path=song.mp3",
+            )
 
 
 if __name__ == "__main__":

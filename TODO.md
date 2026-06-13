@@ -65,8 +65,9 @@
 - [x] Configure Bose API port.
 - [x] Configure AfterTouch base URL.
 - [x] Configure Pi 4 public base URL for speaker-fetchable audio links.
-- [x] Generate AfterTouch custom playback URLs from selected library files.
-- [x] Send selected tracks to Bose through AfterTouch.
+- [x] Configure soundtouch-cli command.
+- [x] Generate Pi 4 stream URLs from selected library files.
+- [x] Send selected tracks to Bose through `soundtouch-cli source custom-radio`.
 - [x] Add output selector:
   - [x] Local Pi
   - [x] Bose SoundTouch
