@@ -57,6 +57,14 @@ class MpvPlayer:
             self._paused = False
             return self.status()
 
+    def seek(self, seconds: float) -> dict[str, object]:
+        with self._lock:
+            self._require_running()
+            safe_seconds = max(0.0, seconds)
+            self._send_command(["seek", safe_seconds, "absolute"])
+            self._started_at = time.monotonic() - safe_seconds
+            return self.status()
+
     def stop(self) -> dict[str, object]:
         if self._process is not None and self._process.poll() is None:
             try:

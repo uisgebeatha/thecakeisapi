@@ -4,7 +4,7 @@ from threading import Event, Lock, Thread
 from fastapi import FastAPI, HTTPException
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 from .library import (
     LibraryNotFoundError,
@@ -25,7 +25,7 @@ WEBUI_DIR = BASE_DIR / "webui"
 
 
 class PlayRequest(BaseModel):
-    queue_paths: list[str] = []
+    queue_paths: list[str] = Field(default_factory=list)
 
 
 def create_app(settings: Settings | None = None) -> FastAPI:
@@ -165,6 +165,16 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             app.state.playback_message = "Stopped"
             return _playback_status(app)
 
+    @app.post("/api/player/local/seek")
+    def seek_local_playback(seconds: float) -> dict[str, object]:
+        try:
+            with app.state.playback_lock:
+                app.state.local_player.seek(seconds)
+                app.state.playback_message = f"Seeked to {int(max(0, seconds))} seconds"
+                return _playback_status(app)
+        except PlayerError as error:
+            raise HTTPException(status_code=503, detail=str(error)) from error
+
     @app.post("/api/player/local/next")
     def play_next_local_track() -> dict[str, object]:
         with app.state.playback_lock:
@@ -205,6 +215,53 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             app.state.playback_message = (
                 "Repeat track on" if app.state.repeat_track else "Repeat track off"
             )
+            return _playback_status(app)
+
+    @app.post("/api/player/local/queue/clear")
+    def clear_local_queue() -> dict[str, object]:
+        with app.state.playback_lock:
+            app.state.playback_queue.clear()
+            app.state.local_player.stop()
+            app.state.playback_message = "Queue cleared"
+            return _playback_status(app)
+
+    @app.post("/api/player/local/queue/remove")
+    def remove_local_queue_track(path: str) -> dict[str, object]:
+        with app.state.playback_lock:
+            next_current_track, removed_current = app.state.playback_queue.remove(path)
+            if removed_current:
+                if next_current_track is None:
+                    app.state.local_player.stop()
+                    app.state.playback_message = "Queue empty"
+                    return _playback_status(app)
+
+                try:
+                    _play_track(app, next_current_track)
+                    app.state.playback_message = f"Playing {next_current_track.name}"
+                except LibraryPathError as error:
+                    raise HTTPException(status_code=400, detail=str(error)) from error
+                except LibraryNotFoundError as error:
+                    raise HTTPException(status_code=404, detail=str(error)) from error
+                except UnsupportedAudioFileError as error:
+                    raise HTTPException(status_code=415, detail=str(error)) from error
+                except PlayerError as error:
+                    raise HTTPException(status_code=503, detail=str(error)) from error
+            else:
+                app.state.playback_message = "Removed track from queue"
+            return _playback_status(app)
+
+    @app.post("/api/player/local/queue/move-up")
+    def move_local_queue_track_up(path: str) -> dict[str, object]:
+        with app.state.playback_lock:
+            moved = app.state.playback_queue.move_up(path)
+            app.state.playback_message = "Moved track up" if moved else "Track is already first"
+            return _playback_status(app)
+
+    @app.post("/api/player/local/queue/move-down")
+    def move_local_queue_track_down(path: str) -> dict[str, object]:
+        with app.state.playback_lock:
+            moved = app.state.playback_queue.move_down(path)
+            app.state.playback_message = "Moved track down" if moved else "Track is already last"
             return _playback_status(app)
 
     @app.get("/api/player/local/status")

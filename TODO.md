@@ -47,7 +47,18 @@
 - [x] Handle Previous on the first track without an error.
 - [x] Keep Bose playback out of scope.
 
-## Milestone 3 – Bose Integration
+## Milestone 3 – Queue Management and Seeking
+
+- [x] Add seekable progress bar.
+- [x] Allow jumping to any position within the current track.
+- [x] Add clear queue button.
+- [x] Remove track from queue.
+- [x] Move queue item up.
+- [x] Move queue item down.
+- [x] Distinguish Play Track from Play Folder.
+- [x] Keep Bose playback out of scope.
+
+## Milestone 4 – Bose Integration
 
 - Configure Bose speaker IP.
 - Send selected tracks to Bose.
@@ -58,7 +69,7 @@
 - Maintain queue when changing output.
 - Preserve playback position where practical.
 
-## Milestone 4 – NAS Storage
+## Milestone 5 – NAS Storage
 
 - USB SSD attached to Pi.
 - SMB share.

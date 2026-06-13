@@ -140,9 +140,40 @@ h1 {
 }
 
 .queue-item {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 0.35rem;
   padding: 0.2rem 0;
   color: #58606b;
   font-size: 0.9rem;
+}
+
+.queue-name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.queue-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.25rem;
+}
+
+.queue-button {
+  border: 1px solid #c7ccd3;
+  border-radius: 0.3rem;
+  padding: 0.15rem 0.35rem;
+  background: #ffffff;
+  color: #45505d;
+  cursor: pointer;
+  font-size: 0.78rem;
+}
+
+.queue-button:hover,
+.queue-button:focus-visible {
+  border-color: #627084;
+  background: #f0f3f6;
 }
 
 .queue-item.current {
@@ -324,8 +355,12 @@ button.entry-details-button {
   font-size: 0.85rem;
 }
 
-progress {
+#track-progress {
   width: 100%;
+}
+
+#track-progress:disabled {
+  opacity: 0.45;
 }
 
 @media (max-width: 760px) {
@@ -426,6 +461,18 @@ progress {
 
   .queue-item.current {
     color: #f2f2ec;
+  }
+
+  .queue-button {
+    border-color: #39404a;
+    background: #202328;
+    color: #c6ccd5;
+  }
+
+  .queue-button:hover,
+  .queue-button:focus-visible {
+    border-color: #778293;
+    background: #292d33;
   }
 
   .player-bar {

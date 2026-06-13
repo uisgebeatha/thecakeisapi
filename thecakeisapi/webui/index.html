@@ -30,6 +30,7 @@
         <aside class="playlist-panel">
           <h2>Queue</h2>
           <p id="queue-status" class="message">No tracks queued.</p>
+          <button id="clear-queue-button" class="nav-button" type="button">Clear Queue</button>
           <ol id="queue-list" class="queue-list" aria-label="Playback queue"></ol>
         </aside>
       </div>
@@ -52,7 +53,7 @@
         </section>
         <section class="timer" aria-label="Track timer">
           <span id="elapsed-time">0:00</span>
-          <progress id="track-progress" value="0" max="100"></progress>
+          <input id="track-progress" type="range" min="0" max="100" value="0" step="1" aria-label="Seek position">
           <span id="duration-time">--:--</span>
         </section>
       </footer>

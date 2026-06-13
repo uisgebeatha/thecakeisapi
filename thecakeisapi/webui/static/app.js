@@ -9,6 +9,7 @@ const nowPlayingTitle = document.querySelector("#now-playing-title");
 const elapsedTime = document.querySelector("#elapsed-time");
 const durationTime = document.querySelector("#duration-time");
 const trackProgress = document.querySelector("#track-progress");
+const clearQueueButton = document.querySelector("#clear-queue-button");
 const upButton = document.querySelector("#up-button");
 const previousButton = document.querySelector("#previous-button");
 const playButton = document.querySelector("#play-button");
@@ -139,12 +140,21 @@ function createEntry(entry) {
   detailsElement.append(icon, details);
   row.appendChild(detailsElement);
 
+  if (entry.type === "directory") {
+    const playFolderButton = document.createElement("button");
+    playFolderButton.className = "play-button";
+    playFolderButton.type = "button";
+    playFolderButton.textContent = "Play Folder";
+    playFolderButton.addEventListener("click", () => playFolder(entry, playFolderButton));
+    row.appendChild(playFolderButton);
+  }
+
   if (entry.type === "file") {
     const playButton = document.createElement("button");
     playButton.className = "play-button";
     playButton.type = "button";
-    playButton.textContent = "Play on Pi";
-    playButton.addEventListener("click", () => playOnPi(entry, playButton));
+    playButton.textContent = "Play Track";
+    playButton.addEventListener("click", () => playTrack(entry, playButton));
     row.appendChild(playButton);
   }
 
@@ -152,22 +162,66 @@ function createEntry(entry) {
   return item;
 }
 
-async function playOnPi(entry, playButton) {
+async function playTrack(entry, playButton) {
+  await playPaths({
+    path: entry.path,
+    queuePaths: [entry.path],
+    label: entry.name,
+    playButton,
+  });
+}
+
+async function playFolder(entry, playButton) {
   const originalText = playButton.textContent;
   playButton.disabled = true;
-  playButton.textContent = "Starting";
-  playbackStatus.textContent = `Starting ${entry.name} on Pi...`;
+  playButton.textContent = "Loading";
+  playbackStatus.textContent = `Loading ${entry.name}...`;
   playbackStatus.dataset.state = "";
 
   try {
-    const params = new URLSearchParams({ path: entry.path });
+    const response = await fetchBrowse(entry.path);
+    if (!response.ok) {
+      const error = await response.json();
+      throw new Error(error.detail || "Folder request failed");
+    }
+
+    const folder = await response.json();
+    const queuePaths = folder.files.map((file) => file.path);
+    if (queuePaths.length === 0) {
+      throw new Error("Folder has no supported audio files");
+    }
+
+    await playPaths({
+      path: queuePaths[0],
+      queuePaths,
+      label: entry.name,
+      playButton,
+    });
+  } catch (error) {
+    playbackStatus.textContent = `Could not play folder: ${error.message}`;
+    playbackStatus.dataset.state = "error";
+  } finally {
+    playButton.disabled = false;
+    playButton.textContent = originalText;
+  }
+}
+
+async function playPaths({ path, queuePaths, label, playButton }) {
+  const originalText = playButton.textContent;
+  playButton.disabled = true;
+  playButton.textContent = "Starting";
+  playbackStatus.textContent = `Starting ${label} on Pi...`;
+  playbackStatus.dataset.state = "";
+
+  try {
+    const params = new URLSearchParams({ path });
     const response = await fetch(`/api/player/local/play?${params.toString()}`, {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
       },
       body: JSON.stringify({
-        queue_paths: currentDirectoryFiles,
+        queue_paths: queuePaths,
       }),
     });
 
@@ -176,7 +230,7 @@ async function playOnPi(entry, playButton) {
       throw new Error(error.detail || "Playback request failed");
     }
 
-    playbackStatus.textContent = `Playing on Pi: ${entry.name}`;
+    playbackStatus.textContent = `Playing on Pi: ${label}`;
     playbackStatus.dataset.state = "ok";
     await refreshPlaybackStatus();
   } catch (error) {
@@ -257,22 +311,59 @@ function renderTimer(playbackState) {
   durationTime.textContent = duration === null ? "--:--" : formatTime(duration);
 
   if (duration && elapsed !== null) {
-    trackProgress.value = Math.min(100, Math.max(0, (elapsed / duration) * 100));
+    trackProgress.max = Math.floor(duration);
+    trackProgress.value = Math.min(duration, Math.max(0, elapsed));
+    trackProgress.disabled = false;
   } else {
+    trackProgress.max = 100;
     trackProgress.value = 0;
+    trackProgress.disabled = true;
   }
 }
 
 function renderQueue(queue) {
   queueList.replaceChildren();
   queueStatus.textContent = queue.length ? `${queue.length} tracks queued` : "No tracks queued.";
+  clearQueueButton.disabled = queue.length === 0;
 
   for (const track of queue) {
     const item = document.createElement("li");
     item.className = track.is_current ? "queue-item current" : "queue-item";
-    item.textContent = track.name;
+
+    const name = document.createElement("span");
+    name.className = "queue-name";
+    name.textContent = track.name;
+
+    const actions = document.createElement("span");
+    actions.className = "queue-actions";
+    actions.append(
+      createQueueButton("Up", () => moveQueueTrack(track.path, "move-up")),
+      createQueueButton("Down", () => moveQueueTrack(track.path, "move-down")),
+      createQueueButton("Remove", () => removeQueueTrack(track.path)),
+    );
+
+    item.append(name, actions);
     queueList.appendChild(item);
   }
+}
+
+function createQueueButton(label, onClick) {
+  const button = document.createElement("button");
+  button.className = "queue-button";
+  button.type = "button";
+  button.textContent = label;
+  button.addEventListener("click", onClick);
+  return button;
+}
+
+function removeQueueTrack(path) {
+  const params = new URLSearchParams({ path });
+  sendTransportCommand(`/api/player/local/queue/remove?${params.toString()}`);
+}
+
+function moveQueueTrack(path, direction) {
+  const params = new URLSearchParams({ path });
+  sendTransportCommand(`/api/player/local/queue/${direction}?${params.toString()}`);
 }
 
 function updateTransportButtons(playbackState) {
@@ -351,9 +442,20 @@ nextButton.addEventListener("click", () => {
   sendTransportCommand("/api/player/local/next");
 });
 
+clearQueueButton.addEventListener("click", () => {
+  sendTransportCommand("/api/player/local/queue/clear");
+});
+
 repeatButton.addEventListener("click", () => {
   const enabled = repeatButton.dataset.active !== "true";
   sendTransportCommand(`/api/player/local/repeat?enabled=${enabled}`);
+});
+
+trackProgress.addEventListener("change", () => {
+  const seconds = Number(trackProgress.value);
+  if (!Number.isNaN(seconds)) {
+    sendTransportCommand(`/api/player/local/seek?seconds=${seconds}`);
+  }
 });
 
 window.addEventListener("hashchange", () => {
