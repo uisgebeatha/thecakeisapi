@@ -424,7 +424,7 @@ function updateTransportButtons(playbackState) {
 
   playButton.disabled = !hasTrack || isPlaying;
   pauseButton.disabled = isBose || !isPlaying;
-  stopButton.disabled = isBose || !hasTrack || playbackState.state === "stopped";
+  stopButton.disabled = !hasTrack || playbackState.state === "stopped";
   previousButton.disabled = !hasTrack;
   nextButton.disabled = !hasTrack;
   repeatButton.dataset.active = playbackState.repeat_track ? "true" : "false";
@@ -509,10 +509,7 @@ pauseButton.addEventListener("click", () => {
 });
 
 stopButton.addEventListener("click", () => {
-  if (selectedOutput() === "bose") {
-    return;
-  }
-  sendTransportCommand("/api/player/local/stop");
+  sendTransportCommand(transportEndpoint("stop"));
 });
 
 nextButton.addEventListener("click", () => {

@@ -140,6 +140,7 @@ soundtouch-cli --host 192.168.42.101 source custom-radio --service-url "http://b
 - `POST /api/player/bose/resume` resends the current queue item to Bose
 - `POST /api/player/bose/next` sends the next queue item to Bose
 - `POST /api/player/bose/previous` sends the previous queue item to Bose
+- `POST /api/player/bose/stop` stops Bose playback with the Bose local key API
 
 To browse the root music folder:
 
@@ -197,7 +198,9 @@ soundtouch-cli --host 192.168.42.101 source custom-radio --service-url "http://1
 
 When this works, the Pi 4 FastAPI logs should show the Bose speaker requesting `/api/library/file`. This confirms the audio is not being proxied through the Pi Zero.
 
+Bose Stop uses the speaker local key API at `http://<bose_speaker_ip>:<bose_api_port>/key` and sends a `STOP` press/release pair. Bose Pause and seek are not enabled yet.
+
 ## Not Implemented Yet
 
 - Persistent playlists
-- Bose pause, stop, seek, and duration reporting
+- Bose pause, seek, and duration reporting

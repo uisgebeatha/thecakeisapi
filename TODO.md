@@ -68,6 +68,7 @@
 - [x] Configure soundtouch-cli command.
 - [x] Generate Pi 4 stream URLs from selected library files.
 - [x] Send selected tracks to Bose through `soundtouch-cli source custom-radio`.
+- [x] Stop Bose playback with the Bose local key API.
 - [x] Add output selector:
   - [x] Local Pi
   - [x] Bose SoundTouch

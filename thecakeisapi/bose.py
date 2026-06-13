@@ -105,6 +105,42 @@ class SoundTouchCliClient:
         )
 
 
+class BoseKeyClient:
+    def __init__(
+        self,
+        speaker_ip: str,
+        api_port: int = 8090,
+        timeout_seconds: float = 8,
+    ) -> None:
+        self.base_url = f"http://{speaker_ip}:{api_port}/"
+        self.timeout_seconds = timeout_seconds
+
+    def stop(self) -> None:
+        self.send_key("STOP")
+
+    def send_key(self, key_name: str) -> None:
+        self._send_key_state(key_name, "press")
+        self._send_key_state(key_name, "release")
+
+    def _send_key_state(self, key_name: str, state: str) -> None:
+        payload = f'<key state="{state}" sender="thecakeisapi">{key_name}</key>'.encode(
+            "utf-8",
+        )
+        request = Request(
+            urljoin(self.base_url, "key"),
+            data=payload,
+            headers={"Content-Type": "application/xml"},
+            method="POST",
+        )
+
+        try:
+            with urlopen(request, timeout=self.timeout_seconds) as response:
+                if response.status >= 400:
+                    raise BosePlaybackError(f"Bose key API returned HTTP {response.status}")
+        except URLError as error:
+            raise BosePlaybackError(f"Bose key API request failed: {error}") from error
+
+
 def build_library_stream_url(public_base_url: str, library_path: str) -> str:
     query = urlencode({"path": library_path})
     return urljoin(public_base_url.rstrip("/") + "/", f"api/library/file?{query}")

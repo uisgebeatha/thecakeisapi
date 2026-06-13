@@ -6,7 +6,7 @@ from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 
-from .bose import BosePlaybackError, SoundTouchCliClient, build_library_stream_url
+from .bose import BoseKeyClient, BosePlaybackError, SoundTouchCliClient, build_library_stream_url
 from .library import (
     LibraryNotFoundError,
     LibraryPathError,
@@ -55,8 +55,14 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         if app_settings.bose_speaker_ip and app_settings.aftertouch_base_url
         else None
     )
+    app.state.bose_key_client = (
+        BoseKeyClient(app_settings.bose_speaker_ip, app_settings.bose_api_port)
+        if app_settings.bose_speaker_ip
+        else None
+    )
     app.state.playback_queue = PlaybackQueue()
     app.state.active_output = "local"
+    app.state.bose_playing = False
     app.state.bose_playback = None
     app.state.repeat_track = False
     app.state.playback_message = "Stopped"
@@ -211,6 +217,17 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 app.state.playback_message = "Start of queue"
                 return _play_bose_queue_track(app, current_track)
             return _play_bose_queue_track(app, previous_track)
+
+    @app.post("/api/player/bose/stop")
+    def stop_bose_playback() -> dict[str, object]:
+        try:
+            with app.state.playback_lock:
+                _stop_bose_playback(app)
+                app.state.active_output = "bose"
+                app.state.playback_message = "Stopped Bose playback"
+                return _playback_status(app)
+        except BosePlaybackError as error:
+            raise HTTPException(status_code=503, detail=str(error)) from error
 
     @app.post("/api/player/local/resume")
     def resume_local_playback() -> dict[str, object]:
@@ -458,6 +475,15 @@ def _play_bose_track(app: FastAPI, track: QueueTrack) -> None:
     resolve_audio_file(app.state.settings.music_root, track.path)
     stream_url = build_library_stream_url(app.state.settings.public_base_url, track.path)
     app.state.bose_playback = app.state.bose_client.play_stream(track.name, stream_url)
+    app.state.bose_playing = True
+
+
+def _stop_bose_playback(app: FastAPI) -> None:
+    if app.state.bose_key_client is None:
+        raise BosePlaybackError("bose_speaker_ip is not configured")
+
+    app.state.bose_key_client.stop()
+    app.state.bose_playing = False
 
 
 def _sync_finished_playback(app: FastAPI) -> None:
@@ -540,10 +566,9 @@ def _playback_status(app: FastAPI) -> dict[str, object]:
 
 def _active_player_status(app: FastAPI) -> dict[str, object]:
     if app.state.active_output == "bose":
-        current_track = app.state.playback_queue.current()
         return {
             "backend": "bose_aftertouch",
-            "state": "playing" if current_track else "stopped",
+            "state": "playing" if app.state.bose_playing else "stopped",
             "process_id": None,
             "elapsed_seconds": None,
             "duration_seconds": None,
