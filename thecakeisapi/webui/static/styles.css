@@ -312,6 +312,28 @@ button.entry-details-button {
   gap: 0.15rem;
 }
 
+.output-select {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.output-select label {
+  color: #58606b;
+  font-size: 0.9rem;
+  font-weight: 700;
+}
+
+.output-select select {
+  min-width: 11rem;
+  border: 1px solid #9aa2ad;
+  border-radius: 0.35rem;
+  padding: 0.4rem 0.55rem;
+  background: #ffffff;
+  color: #1c1f23;
+  font: inherit;
+}
+
 #now-playing-title {
   overflow: hidden;
   font-weight: 700;
@@ -419,13 +441,15 @@ button.entry-details-button {
 
   .path-label,
   .message,
-  .entry-meta {
+  .entry-meta,
+  .output-select label {
     color: #b5bbc4;
   }
 
   .nav-button,
   .entry-row,
-  .entry-details-button {
+  .entry-details-button,
+  .output-select select {
     border-color: #30343a;
     background: #202328;
     color: #f2f2ec;

@@ -61,14 +61,18 @@
 
 ## Milestone 4 – Bose Integration
 
-- Configure Bose speaker IP.
-- Send selected tracks to Bose.
-- Display Bose playback status.
-- Switch output between:
-  - Local Pi
-  - Bose SoundTouch
-- Maintain queue when changing output.
-- Preserve playback position where practical.
+- [x] Configure Bose speaker IP.
+- [x] Configure Bose API port.
+- [x] Configure AfterTouch base URL.
+- [x] Configure Pi 4 public base URL for speaker-fetchable audio links.
+- [x] Generate AfterTouch custom playback URLs from selected library files.
+- [x] Send selected tracks to Bose through AfterTouch.
+- [x] Add output selector:
+  - [x] Local Pi
+  - [x] Bose SoundTouch
+- [x] Maintain queue when changing output where practical.
+- [ ] Display live Bose playback status from the speaker.
+- [ ] Preserve playback position where practical.
 
 ## Milestone 5 – NAS Storage
 
@@ -77,3 +81,15 @@
 - Music library scanning.
 - Automatic rescan.
 - Disk usage reporting.
+
+## Minor Improvements
+
+- Hide Windows metadata folders:
+  - $RECYCLE.BIN
+  - System Volume Information
+
+- Improve VLC-style UI layout.
+- Better mobile layout.
+- Consider album artwork support.
+- Consider volume control.
+- Consider shuffle mode.

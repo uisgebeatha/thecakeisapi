@@ -4,12 +4,16 @@ from dataclasses import dataclass, field
 from ipaddress import ip_address
 from pathlib import Path
 from typing import Any
+from urllib.parse import urlparse
 
 
 @dataclass(frozen=True)
 class Settings:
     music_root: Path = Path("/mnt/music")
     bose_speaker_ip: str | None = None
+    bose_api_port: int = 8090
+    aftertouch_base_url: str | None = None
+    public_base_url: str | None = None
     mpv_command: str = "mpv"
     mpv_ipc_path: Path = Path("/tmp/thecakeisapi-mpv.sock")
     config_path: Path | None = field(default=None, repr=False)
@@ -27,6 +31,18 @@ class Settings:
             "THECAKEISAPI_BOSE_SPEAKER_IP",
             cls._read_optional_string(config_values, "bose_speaker_ip"),
         )
+        bose_api_port = os.getenv(
+            "THECAKEISAPI_BOSE_API_PORT",
+            str(cls._read_int(config_values, "bose_api_port", cls.bose_api_port)),
+        )
+        aftertouch_base_url = os.getenv(
+            "THECAKEISAPI_AFTERTOUCH_BASE_URL",
+            cls._read_optional_string(config_values, "aftertouch_base_url"),
+        )
+        public_base_url = os.getenv(
+            "THECAKEISAPI_PUBLIC_BASE_URL",
+            cls._read_optional_string(config_values, "public_base_url"),
+        )
         mpv_command = os.getenv(
             "THECAKEISAPI_MPV_COMMAND",
             cls._read_string(config_values, "mpv_command", cls.mpv_command),
@@ -39,6 +55,9 @@ class Settings:
         settings = cls(
             music_root=Path(music_root),
             bose_speaker_ip=bose_speaker_ip,
+            bose_api_port=cls._parse_int("bose_api_port", bose_api_port),
+            aftertouch_base_url=aftertouch_base_url,
+            public_base_url=public_base_url,
             mpv_command=mpv_command,
             mpv_ipc_path=Path(mpv_ipc_path),
             config_path=resolved_config_path if resolved_config_path.exists() else None,
@@ -60,18 +79,25 @@ class Settings:
         if not str(self.mpv_ipc_path).strip():
             raise ValueError("mpv_ipc_path must not be empty")
 
-        if self.bose_speaker_ip in ("", None):
-            return
+        if self.bose_speaker_ip not in ("", None):
+            try:
+                ip_address(self.bose_speaker_ip)
+            except ValueError as error:
+                raise ValueError("bose_speaker_ip must be a valid IP address") from error
 
-        try:
-            ip_address(self.bose_speaker_ip)
-        except ValueError as error:
-            raise ValueError("bose_speaker_ip must be a valid IP address") from error
+        if self.bose_api_port < 1 or self.bose_api_port > 65535:
+            raise ValueError("bose_api_port must be between 1 and 65535")
 
-    def as_dict(self) -> dict[str, str | None]:
+        self._validate_optional_url("aftertouch_base_url", self.aftertouch_base_url)
+        self._validate_optional_url("public_base_url", self.public_base_url)
+
+    def as_dict(self) -> dict[str, str | int | None]:
         return {
             "music_root": str(self.music_root),
             "bose_speaker_ip": self.bose_speaker_ip,
+            "bose_api_port": self.bose_api_port,
+            "aftertouch_base_url": self.aftertouch_base_url,
+            "public_base_url": self.public_base_url,
             "mpv_command": self.mpv_command,
             "mpv_ipc_path": str(self.mpv_ipc_path),
             "config_path": str(self.config_path) if self.config_path else None,
@@ -99,6 +125,9 @@ class Settings:
         allowed_keys = {
             "music_root",
             "bose_speaker_ip",
+            "bose_api_port",
+            "aftertouch_base_url",
+            "public_base_url",
             "mpv_command",
             "mpv_ipc_path",
         }
@@ -131,3 +160,26 @@ class Settings:
         if not isinstance(value, str):
             raise ValueError(f"{key} must be a string or null")
         return value
+
+    @staticmethod
+    def _read_int(config_values: dict[str, Any], key: str, default: int) -> int:
+        value = config_values.get(key, default)
+        if not isinstance(value, int):
+            raise ValueError(f"{key} must be an integer")
+        return value
+
+    @staticmethod
+    def _parse_int(key: str, value: str) -> int:
+        try:
+            return int(value)
+        except ValueError as error:
+            raise ValueError(f"{key} must be an integer") from error
+
+    @staticmethod
+    def _validate_optional_url(key: str, value: str | None) -> None:
+        if value in ("", None):
+            return
+
+        parsed_url = urlparse(value)
+        if parsed_url.scheme not in {"http", "https"} or not parsed_url.netloc:
+            raise ValueError(f"{key} must be an HTTP or HTTPS URL")

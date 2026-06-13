@@ -9,6 +9,7 @@ const nowPlayingTitle = document.querySelector("#now-playing-title");
 const elapsedTime = document.querySelector("#elapsed-time");
 const durationTime = document.querySelector("#duration-time");
 const trackProgress = document.querySelector("#track-progress");
+const outputSelector = document.querySelector("#output-selector");
 const clearQueueButton = document.querySelector("#clear-queue-button");
 const upButton = document.querySelector("#up-button");
 const previousButton = document.querySelector("#previous-button");
@@ -26,7 +27,7 @@ async function loadApp() {
     const [healthResponse, browseResponse, playbackResponse] = await Promise.all([
       fetch("/api/health"),
       fetchBrowse(currentPath()),
-      fetch("/api/player/local/status"),
+      fetch("/api/player/status"),
     ]);
 
     if (!healthResponse.ok) {
@@ -217,12 +218,12 @@ async function playPaths({ path, queuePaths, label, playButton }) {
   const originalText = playButton.textContent;
   playButton.disabled = true;
   playButton.textContent = "Starting";
-  playbackStatus.textContent = `Starting ${label} on Pi...`;
+  playbackStatus.textContent = `Starting ${label} on ${outputLabel()}...`;
   playbackStatus.dataset.state = "";
 
   try {
     const params = new URLSearchParams({ path });
-    const response = await fetch(`/api/player/local/play?${params.toString()}`, {
+    const response = await fetch(`${playEndpoint()}?${params.toString()}`, {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
@@ -237,7 +238,7 @@ async function playPaths({ path, queuePaths, label, playButton }) {
       throw new Error(error.detail || "Playback request failed");
     }
 
-    playbackStatus.textContent = `Playing on Pi: ${label}`;
+    playbackStatus.textContent = `Playing on ${outputLabel()}: ${label}`;
     playbackStatus.dataset.state = "ok";
     await refreshPlaybackStatus();
   } catch (error) {
@@ -297,7 +298,7 @@ async function sendTransportCommand(endpoint) {
 
 async function refreshPlaybackStatus() {
   try {
-    const response = await fetch("/api/player/local/status");
+    const response = await fetch("/api/player/status");
     await renderPlaybackResponse(response);
   } catch (error) {
     playbackStatus.textContent = "Playback status is unavailable.";
@@ -344,6 +345,15 @@ function playbackMessage(playbackState) {
 }
 
 function renderTimer(playbackState) {
+  if (selectedOutput() === "bose") {
+    elapsedTime.textContent = "0:00";
+    durationTime.textContent = "--:--";
+    trackProgress.max = 100;
+    trackProgress.value = 0;
+    trackProgress.disabled = true;
+    return;
+  }
+
   const elapsed = playbackState.elapsed_seconds;
   const duration = playbackState.duration_seconds;
 
@@ -410,16 +420,37 @@ function updateTransportButtons(playbackState) {
   const hasTrack = Boolean(playbackState.now_playing);
   const isPlaying = playbackState.state === "playing";
   const isPaused = playbackState.state === "paused";
+  const isBose = selectedOutput() === "bose";
 
   playButton.disabled = !hasTrack || isPlaying;
-  pauseButton.disabled = !isPlaying;
-  stopButton.disabled = !hasTrack || playbackState.state === "stopped";
+  pauseButton.disabled = isBose || !isPlaying;
+  stopButton.disabled = isBose || !hasTrack || playbackState.state === "stopped";
   previousButton.disabled = !hasTrack;
   nextButton.disabled = !hasTrack;
   repeatButton.dataset.active = playbackState.repeat_track ? "true" : "false";
   repeatButton.setAttribute("aria-pressed", playbackState.repeat_track ? "true" : "false");
 
   playButton.textContent = isPaused ? "Play" : "Play";
+}
+
+function selectedOutput() {
+  return outputSelector.value === "bose" ? "bose" : "local";
+}
+
+function outputLabel() {
+  return selectedOutput() === "bose" ? "Bose SoundTouch" : "Pi";
+}
+
+function playEndpoint() {
+  return selectedOutput() === "bose" ? "/api/player/bose/play" : "/api/player/local/play";
+}
+
+function transportEndpoint(action) {
+  const output = selectedOutput();
+  if (output === "bose") {
+    return `/api/player/bose/${action}`;
+  }
+  return `/api/player/local/${action}`;
 }
 
 function navigateTo(path) {
@@ -463,23 +494,29 @@ upButton.addEventListener("click", () => {
 });
 
 previousButton.addEventListener("click", () => {
-  sendTransportCommand("/api/player/local/previous");
+  sendTransportCommand(transportEndpoint("previous"));
 });
 
 playButton.addEventListener("click", () => {
-  sendTransportCommand("/api/player/local/resume");
+  sendTransportCommand(transportEndpoint("resume"));
 });
 
 pauseButton.addEventListener("click", () => {
+  if (selectedOutput() === "bose") {
+    return;
+  }
   sendTransportCommand("/api/player/local/pause");
 });
 
 stopButton.addEventListener("click", () => {
+  if (selectedOutput() === "bose") {
+    return;
+  }
   sendTransportCommand("/api/player/local/stop");
 });
 
 nextButton.addEventListener("click", () => {
-  sendTransportCommand("/api/player/local/next");
+  sendTransportCommand(transportEndpoint("next"));
 });
 
 clearQueueButton.addEventListener("click", () => {
@@ -492,9 +529,21 @@ repeatButton.addEventListener("click", () => {
 });
 
 trackProgress.addEventListener("change", () => {
+  if (selectedOutput() === "bose") {
+    playbackStatus.textContent = "Seeking is not supported for Bose output yet.";
+    playbackStatus.dataset.state = "";
+    return;
+  }
+
   const seconds = Number(trackProgress.value);
   if (!Number.isNaN(seconds)) {
     sendTransportCommand(`/api/player/local/seek?seconds=${seconds}`);
+  }
+});
+
+outputSelector.addEventListener("change", () => {
+  if (lastPlaybackState !== null) {
+    renderPlaybackState(lastPlaybackState);
   }
 });
 

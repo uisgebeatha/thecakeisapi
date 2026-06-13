@@ -2,7 +2,7 @@
 
 thecakeisapi is a lightweight browser-based music player for a Raspberry Pi 4B running Ubuntu.
 
-The first version is intentionally small: FastAPI serves a plain web interface for browsing folders and controlling local Raspberry Pi playback with mpv.
+The first version is intentionally small: FastAPI serves a plain web interface for browsing folders, controlling local Raspberry Pi playback with mpv, and handing Pi-hosted stream URLs to a Bose SoundTouch speaker through AfterTouch.
 
 ## Requirements
 
@@ -43,6 +43,9 @@ The application starts with sensible defaults if no settings file exists:
 
 - `music_root`: `/mnt/music`
 - `bose_speaker_ip`: unset
+- `bose_api_port`: `8090`
+- `aftertouch_base_url`: unset
+- `public_base_url`: unset
 - `mpv_command`: `mpv`
 - `mpv_ipc_path`: `/tmp/thecakeisapi-mpv.sock`
 
@@ -51,7 +54,10 @@ For local configuration, copy `config.example.json` to `config.json` and edit it
 ```json
 {
   "music_root": "/mnt/music",
-  "bose_speaker_ip": null,
+  "bose_speaker_ip": "192.168.42.101",
+  "bose_api_port": 8090,
+  "aftertouch_base_url": "http://192.168.42.102",
+  "public_base_url": "http://192.168.42.100:8000",
   "mpv_command": "mpv",
   "mpv_ipc_path": "/tmp/thecakeisapi-mpv.sock"
 }
@@ -76,10 +82,26 @@ THECAKEISAPI_BOSE_SPEAKER_IP=192.168.1.50 uvicorn thecakeisapi.main:app --host 0
 ```
 
 ```bash
+THECAKEISAPI_AFTERTOUCH_BASE_URL=http://192.168.42.102 uvicorn thecakeisapi.main:app --host 0.0.0.0 --port 8000
+```
+
+```bash
+THECAKEISAPI_PUBLIC_BASE_URL=http://192.168.42.100:8000 uvicorn thecakeisapi.main:app --host 0.0.0.0 --port 8000
+```
+
+```bash
 THECAKEISAPI_MPV_COMMAND=/usr/bin/mpv uvicorn thecakeisapi.main:app --host 0.0.0.0 --port 8000
 ```
 
-Configuration is validated when the app starts. The music root, `mpv_command`, and `mpv_ipc_path` must not be empty. `bose_speaker_ip` must be either `null`, omitted, or a valid IP address.
+Configuration is validated when the app starts. The music root, `mpv_command`, and `mpv_ipc_path` must not be empty. `bose_speaker_ip` must be either `null`, omitted, or a valid IP address. `bose_api_port` must be between `1` and `65535`. `aftertouch_base_url` and `public_base_url` must be HTTP or HTTPS URLs when set.
+
+For Bose playback, `public_base_url` must be the Pi 4 URL that the Bose speaker can fetch on the local network. Do not use `localhost` for this setting. The intended audio path is:
+
+```text
+Bose SoundTouch -> Pi 4 /api/library/file endpoint
+```
+
+AfterTouch can run on another machine, such as a Pi Zero. Configure its base URL with `aftertouch_base_url`.
 
 ## Current Endpoints
 
@@ -103,6 +125,11 @@ Configuration is validated when the app starts. The music root, `mpv_command`, a
 - `POST /api/player/local/queue/move-up` moves a queued track up
 - `POST /api/player/local/queue/move-down` moves a queued track down
 - `GET /api/player/local/status` returns now-playing state, queue, elapsed time, and duration when mpv reports it
+- `GET /api/player/status` returns the active playback status for the selected output
+- `POST /api/player/bose/play` sends a supported library file to Bose through AfterTouch custom playback
+- `POST /api/player/bose/resume` resends the current queue item to Bose
+- `POST /api/player/bose/next` sends the next queue item to Bose
+- `POST /api/player/bose/previous` sends the previous queue item to Bose
 
 To browse the root music folder:
 
@@ -140,7 +167,27 @@ When a track finishes, the app advances to the next temporary queue item. If Rep
 
 The playback position slider seeks within the current track when mpv reports a duration.
 
+To start Bose playback, configure `aftertouch_base_url` and `public_base_url`, then pass the same relative file path:
+
+```bash
+curl -X POST "http://localhost:8000/api/player/bose/play?path=Albums/example.mp3"
+```
+
+The Bose endpoint resolves the library path with the same traversal protection as local playback, builds a Pi 4 stream URL such as:
+
+```text
+http://192.168.42.100:8000/api/library/file?path=Albums%2Fexample.mp3
+```
+
+Then it calls AfterTouch using the custom playback URL format:
+
+```text
+http://192.168.42.102/custom/v1/playback/<encoded stream URL>
+```
+
+When this works, the Pi 4 FastAPI logs should show the Bose speaker requesting `/api/library/file`. This confirms the audio is not being proxied through the Pi Zero.
+
 ## Not Implemented Yet
 
 - Persistent playlists
-- Bose SoundTouch playback
+- Bose pause, stop, seek, and duration reporting

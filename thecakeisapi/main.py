@@ -6,6 +6,7 @@ from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 
+from .bose import AfterTouchClient, BosePlaybackError, build_library_stream_url
 from .library import (
     LibraryNotFoundError,
     LibraryPathError,
@@ -45,7 +46,14 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         app_settings.mpv_command,
         app_settings.mpv_ipc_path,
     )
+    app.state.aftertouch_client = (
+        AfterTouchClient(app_settings.aftertouch_base_url)
+        if app_settings.aftertouch_base_url
+        else None
+    )
     app.state.playback_queue = PlaybackQueue()
+    app.state.active_output = "local"
+    app.state.bose_playback = None
     app.state.repeat_track = False
     app.state.playback_message = "Stopped"
     app.state.playback_lock = Lock()
@@ -72,7 +80,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         return {"status": "ok"}
 
     @app.get("/api/settings")
-    def read_settings() -> dict[str, str | None]:
+    def read_settings() -> dict[str, str | int | None]:
         return app_settings.as_dict()
 
     @app.get("/api/library/status")
@@ -117,6 +125,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                     request.queue_paths if request else [],
                 )
                 selected_track = app.state.playback_queue.set_tracks(queue_tracks, path)
+                app.state.active_output = "local"
                 _play_track(app, selected_track)
                 app.state.playback_message = f"Playing {selected_track.name}"
                 return _playback_status(app)
@@ -129,11 +138,82 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         except PlayerError as error:
             raise HTTPException(status_code=503, detail=str(error)) from error
 
+    @app.post("/api/player/bose/play")
+    def play_bose_file(
+        path: str,
+        request: PlayRequest | None = None,
+    ) -> dict[str, object]:
+        try:
+            with app.state.playback_lock:
+                queue_tracks = _validated_queue_tracks(
+                    app_settings.music_root,
+                    request.queue_paths if request else [],
+                )
+                selected_track = app.state.playback_queue.set_tracks(queue_tracks, path)
+                _play_bose_track(app, selected_track)
+                app.state.active_output = "bose"
+                app.state.local_player.stop()
+                app.state.playback_message = f"Playing on Bose: {selected_track.name}"
+                return _playback_status(app)
+        except LibraryPathError as error:
+            raise HTTPException(status_code=400, detail=str(error)) from error
+        except LibraryNotFoundError as error:
+            raise HTTPException(status_code=404, detail=str(error)) from error
+        except UnsupportedAudioFileError as error:
+            raise HTTPException(status_code=415, detail=str(error)) from error
+        except BosePlaybackError as error:
+            raise HTTPException(status_code=503, detail=str(error)) from error
+
+    @app.post("/api/player/bose/resume")
+    def replay_current_bose_file() -> dict[str, object]:
+        try:
+            with app.state.playback_lock:
+                current_track = app.state.playback_queue.current()
+                if current_track is None:
+                    app.state.playback_message = "No track is selected"
+                    return _playback_status(app)
+                _play_bose_track(app, current_track)
+                app.state.active_output = "bose"
+                app.state.local_player.stop()
+                app.state.playback_message = f"Playing on Bose: {current_track.name}"
+                return _playback_status(app)
+        except LibraryPathError as error:
+            raise HTTPException(status_code=400, detail=str(error)) from error
+        except LibraryNotFoundError as error:
+            raise HTTPException(status_code=404, detail=str(error)) from error
+        except UnsupportedAudioFileError as error:
+            raise HTTPException(status_code=415, detail=str(error)) from error
+        except BosePlaybackError as error:
+            raise HTTPException(status_code=503, detail=str(error)) from error
+
+    @app.post("/api/player/bose/next")
+    def play_next_bose_track() -> dict[str, object]:
+        with app.state.playback_lock:
+            next_track = app.state.playback_queue.next()
+            if next_track is None:
+                app.state.playback_message = "End of queue"
+                return _playback_status(app)
+            return _play_bose_queue_track(app, next_track)
+
+    @app.post("/api/player/bose/previous")
+    def play_previous_bose_track() -> dict[str, object]:
+        with app.state.playback_lock:
+            previous_track = app.state.playback_queue.previous()
+            if previous_track is None:
+                current_track = app.state.playback_queue.current()
+                if current_track is None:
+                    app.state.playback_message = "No track is selected"
+                    return _playback_status(app)
+                app.state.playback_message = "Start of queue"
+                return _play_bose_queue_track(app, current_track)
+            return _play_bose_queue_track(app, previous_track)
+
     @app.post("/api/player/local/resume")
     def resume_local_playback() -> dict[str, object]:
         try:
             with app.state.playback_lock:
                 current_track = app.state.playback_queue.current()
+                app.state.active_output = "local"
                 if app.state.local_player.status()["state"] == "stopped":
                     if current_track is None:
                         app.state.playback_message = "No track is selected"
@@ -165,6 +245,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     @app.post("/api/player/local/stop")
     def stop_local_playback() -> dict[str, object]:
         with app.state.playback_lock:
+            app.state.active_output = "local"
             app.state.local_player.stop()
             app.state.playback_message = "Stopped"
             return _playback_status(app)
@@ -261,7 +342,11 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                     app.state.playback_message = "Queue empty"
                     return _playback_status(app)
 
+                if app.state.active_output == "bose":
+                    return _play_bose_queue_track(app, next_current_track)
+
                 try:
+                    app.state.active_output = "local"
                     _play_track(app, next_current_track)
                     app.state.playback_message = f"Playing {next_current_track.name}"
                 except LibraryPathError as error:
@@ -296,6 +381,12 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             _sync_finished_playback(app)
             return _playback_status(app)
 
+    @app.get("/api/player/status")
+    def playback_status() -> dict[str, object]:
+        with app.state.playback_lock:
+            _sync_finished_playback(app)
+            return _playback_status(app)
+
     return app
 
 
@@ -309,11 +400,13 @@ def _validated_queue_tracks(music_root: Path, queue_paths: list[str]) -> list[Qu
 
 def _play_queue_track(app: FastAPI, track: QueueTrack | None) -> dict[str, object]:
     if track is None:
+        app.state.active_output = "local"
         app.state.local_player.stop()
         app.state.playback_message = "End of queue"
         return _playback_status(app)
 
     try:
+        app.state.active_output = "local"
         _play_track(app, track)
         app.state.playback_message = f"Playing {track.name}"
         return _playback_status(app)
@@ -327,12 +420,44 @@ def _play_queue_track(app: FastAPI, track: QueueTrack | None) -> dict[str, objec
         raise HTTPException(status_code=503, detail=str(error)) from error
 
 
+def _play_bose_queue_track(app: FastAPI, track: QueueTrack) -> dict[str, object]:
+    try:
+        _play_bose_track(app, track)
+        app.state.active_output = "bose"
+        app.state.local_player.stop()
+        app.state.playback_message = f"Playing on Bose: {track.name}"
+        return _playback_status(app)
+    except LibraryPathError as error:
+        raise HTTPException(status_code=400, detail=str(error)) from error
+    except LibraryNotFoundError as error:
+        raise HTTPException(status_code=404, detail=str(error)) from error
+    except UnsupportedAudioFileError as error:
+        raise HTTPException(status_code=415, detail=str(error)) from error
+    except BosePlaybackError as error:
+        raise HTTPException(status_code=503, detail=str(error)) from error
+
+
 def _play_track(app: FastAPI, track: QueueTrack) -> None:
     file_path = resolve_audio_file(app.state.settings.music_root, track.path)
     app.state.local_player.play(file_path)
 
 
+def _play_bose_track(app: FastAPI, track: QueueTrack) -> None:
+    if app.state.aftertouch_client is None:
+        raise BosePlaybackError("aftertouch_base_url is not configured")
+
+    if not app.state.settings.public_base_url:
+        raise BosePlaybackError("public_base_url is not configured")
+
+    resolve_audio_file(app.state.settings.music_root, track.path)
+    stream_url = build_library_stream_url(app.state.settings.public_base_url, track.path)
+    app.state.bose_playback = app.state.aftertouch_client.play_stream(stream_url)
+
+
 def _sync_finished_playback(app: FastAPI) -> None:
+    if app.state.active_output != "local":
+        return
+
     if not app.state.local_player.consume_finished():
         return
 
@@ -368,11 +493,12 @@ def _monitor_playback(app: FastAPI) -> None:
 
 
 def _playback_status(app: FastAPI) -> dict[str, object]:
-    player_status = app.state.local_player.status()
+    player_status = _active_player_status(app)
     queue_status = app.state.playback_queue.as_dict()
     current_track = app.state.playback_queue.current()
 
     return {
+        "active_output": app.state.active_output,
         "backend": player_status["backend"],
         "state": player_status["state"],
         "process_id": player_status["process_id"],
@@ -388,7 +514,34 @@ def _playback_status(app: FastAPI) -> dict[str, object]:
         if current_track
         else None,
         "queue": queue_status["tracks"],
+        "bose": {
+            "speaker_ip": app.state.settings.bose_speaker_ip,
+            "api_port": app.state.settings.bose_api_port,
+            "aftertouch_base_url": app.state.settings.aftertouch_base_url,
+            "public_base_url": app.state.settings.public_base_url,
+            "stream_url": app.state.bose_playback.stream_url
+            if app.state.bose_playback
+            else None,
+            "playback_url": app.state.bose_playback.playback_url
+            if app.state.bose_playback
+            else None,
+        },
     }
+
+
+def _active_player_status(app: FastAPI) -> dict[str, object]:
+    if app.state.active_output == "bose":
+        current_track = app.state.playback_queue.current()
+        return {
+            "backend": "bose_aftertouch",
+            "state": "playing" if current_track else "stopped",
+            "process_id": None,
+            "elapsed_seconds": None,
+            "duration_seconds": None,
+            "paused": False,
+        }
+
+    return app.state.local_player.status()
 
 
 app = create_app()

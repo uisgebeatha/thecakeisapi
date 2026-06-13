@@ -41,6 +41,13 @@
           <p id="now-playing-title">Nothing playing</p>
           <p id="playback-status" class="message" aria-live="polite"></p>
         </section>
+        <section class="output-select" aria-label="Audio output">
+          <label for="output-selector">Output</label>
+          <select id="output-selector">
+            <option value="local">Pi 4 Local</option>
+            <option value="bose">Bose SoundTouch</option>
+          </select>
+        </section>
         <section class="transport" aria-label="Playback controls">
           <button id="previous-button" class="control-button" type="button">Previous Track</button>
           <button id="play-button" class="control-button primary" type="button">Play</button>
