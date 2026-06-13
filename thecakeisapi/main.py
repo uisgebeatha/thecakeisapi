@@ -1,4 +1,5 @@
 from pathlib import Path
+from threading import Event, Lock, Thread
 
 from fastapi import FastAPI, HTTPException
 from fastapi.responses import FileResponse
@@ -41,6 +42,16 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         app_settings.mpv_ipc_path,
     )
     app.state.playback_queue = PlaybackQueue()
+    app.state.repeat_track = False
+    app.state.playback_message = "Stopped"
+    app.state.playback_lock = Lock()
+    app.state.playback_monitor_stop = Event()
+    app.state.playback_monitor = Thread(
+        target=_monitor_playback,
+        args=(app,),
+        daemon=True,
+    )
+    app.state.playback_monitor.start()
 
     app.mount(
         "/static",
@@ -96,14 +107,15 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         request: PlayRequest | None = None,
     ) -> dict[str, object]:
         try:
-            queue_tracks = _validated_queue_tracks(
-                app_settings.music_root,
-                request.queue_paths if request else [],
-            )
-            selected_track = app.state.playback_queue.set_tracks(queue_tracks, path)
-            file_path = resolve_audio_file(app_settings.music_root, selected_track.path)
-            app.state.local_player.play(file_path)
-            return _playback_status(app)
+            with app.state.playback_lock:
+                queue_tracks = _validated_queue_tracks(
+                    app_settings.music_root,
+                    request.queue_paths if request else [],
+                )
+                selected_track = app.state.playback_queue.set_tracks(queue_tracks, path)
+                _play_track(app, selected_track)
+                app.state.playback_message = f"Playing {selected_track.name}"
+                return _playback_status(app)
         except LibraryPathError as error:
             raise HTTPException(status_code=400, detail=str(error)) from error
         except LibraryNotFoundError as error:
@@ -116,15 +128,17 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     @app.post("/api/player/local/resume")
     def resume_local_playback() -> dict[str, object]:
         try:
-            current_track = app.state.playback_queue.current()
-            if app.state.local_player.status()["state"] == "stopped":
-                if current_track is None:
-                    raise HTTPException(status_code=404, detail="No track is selected")
-                file_path = resolve_audio_file(app_settings.music_root, current_track.path)
-                app.state.local_player.play(file_path)
-            else:
-                app.state.local_player.resume()
-            return _playback_status(app)
+            with app.state.playback_lock:
+                current_track = app.state.playback_queue.current()
+                if app.state.local_player.status()["state"] == "stopped":
+                    if current_track is None:
+                        app.state.playback_message = "No track is selected"
+                        return _playback_status(app)
+                    _play_track(app, current_track)
+                else:
+                    app.state.local_player.resume()
+                app.state.playback_message = "Playing on Pi"
+                return _playback_status(app)
         except LibraryPathError as error:
             raise HTTPException(status_code=400, detail=str(error)) from error
         except LibraryNotFoundError as error:
@@ -137,27 +151,67 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     @app.post("/api/player/local/pause")
     def pause_local_playback() -> dict[str, object]:
         try:
-            app.state.local_player.pause()
-            return _playback_status(app)
+            with app.state.playback_lock:
+                app.state.local_player.pause()
+                app.state.playback_message = "Paused"
+                return _playback_status(app)
         except PlayerError as error:
             raise HTTPException(status_code=503, detail=str(error)) from error
 
     @app.post("/api/player/local/stop")
     def stop_local_playback() -> dict[str, object]:
-        app.state.local_player.stop()
-        return _playback_status(app)
+        with app.state.playback_lock:
+            app.state.local_player.stop()
+            app.state.playback_message = "Stopped"
+            return _playback_status(app)
 
     @app.post("/api/player/local/next")
     def play_next_local_track() -> dict[str, object]:
-        return _play_queue_track(app, app.state.playback_queue.next())
+        with app.state.playback_lock:
+            next_track = app.state.playback_queue.next()
+            if next_track is None:
+                app.state.local_player.stop()
+                app.state.playback_message = "End of queue"
+                return _playback_status(app)
+            return _play_queue_track(app, next_track)
 
     @app.post("/api/player/local/previous")
     def play_previous_local_track() -> dict[str, object]:
-        return _play_queue_track(app, app.state.playback_queue.previous())
+        with app.state.playback_lock:
+            previous_track = app.state.playback_queue.previous()
+            if previous_track is None:
+                current_track = app.state.playback_queue.current()
+                if current_track is None:
+                    app.state.playback_message = "No track is selected"
+                    return _playback_status(app)
+                app.state.playback_message = "Start of queue"
+                try:
+                    _play_track(app, current_track)
+                except LibraryPathError as error:
+                    raise HTTPException(status_code=400, detail=str(error)) from error
+                except LibraryNotFoundError as error:
+                    raise HTTPException(status_code=404, detail=str(error)) from error
+                except UnsupportedAudioFileError as error:
+                    raise HTTPException(status_code=415, detail=str(error)) from error
+                except PlayerError as error:
+                    raise HTTPException(status_code=503, detail=str(error)) from error
+                return _playback_status(app)
+            return _play_queue_track(app, previous_track)
+
+    @app.post("/api/player/local/repeat")
+    def set_repeat_track(enabled: bool) -> dict[str, object]:
+        with app.state.playback_lock:
+            app.state.repeat_track = enabled
+            app.state.playback_message = (
+                "Repeat track on" if app.state.repeat_track else "Repeat track off"
+            )
+            return _playback_status(app)
 
     @app.get("/api/player/local/status")
     def local_playback_status() -> dict[str, object]:
-        return _playback_status(app)
+        with app.state.playback_lock:
+            _sync_finished_playback(app)
+            return _playback_status(app)
 
     return app
 
@@ -172,11 +226,13 @@ def _validated_queue_tracks(music_root: Path, queue_paths: list[str]) -> list[Qu
 
 def _play_queue_track(app: FastAPI, track: QueueTrack | None) -> dict[str, object]:
     if track is None:
-        raise HTTPException(status_code=404, detail="No track is available")
+        app.state.local_player.stop()
+        app.state.playback_message = "End of queue"
+        return _playback_status(app)
 
     try:
-        file_path = resolve_audio_file(app.state.settings.music_root, track.path)
-        app.state.local_player.play(file_path)
+        _play_track(app, track)
+        app.state.playback_message = f"Playing {track.name}"
         return _playback_status(app)
     except LibraryPathError as error:
         raise HTTPException(status_code=400, detail=str(error)) from error
@@ -186,6 +242,46 @@ def _play_queue_track(app: FastAPI, track: QueueTrack | None) -> dict[str, objec
         raise HTTPException(status_code=415, detail=str(error)) from error
     except PlayerError as error:
         raise HTTPException(status_code=503, detail=str(error)) from error
+
+
+def _play_track(app: FastAPI, track: QueueTrack) -> None:
+    file_path = resolve_audio_file(app.state.settings.music_root, track.path)
+    app.state.local_player.play(file_path)
+
+
+def _sync_finished_playback(app: FastAPI) -> None:
+    if not app.state.local_player.consume_finished():
+        return
+
+    current_track = app.state.playback_queue.current()
+    if current_track is None:
+        app.state.playback_message = "Stopped"
+        return
+
+    if app.state.repeat_track:
+        try:
+            _play_track(app, current_track)
+            app.state.playback_message = f"Repeating {current_track.name}"
+        except (LibraryPathError, LibraryNotFoundError, UnsupportedAudioFileError, PlayerError):
+            app.state.playback_message = "Could not repeat track"
+        return
+
+    next_track = app.state.playback_queue.next()
+    if next_track is None:
+        app.state.playback_message = "End of queue"
+        return
+
+    try:
+        _play_track(app, next_track)
+        app.state.playback_message = f"Playing {next_track.name}"
+    except (LibraryPathError, LibraryNotFoundError, UnsupportedAudioFileError, PlayerError):
+        app.state.playback_message = "Could not start next track"
+
+
+def _monitor_playback(app: FastAPI) -> None:
+    while not app.state.playback_monitor_stop.wait(1):
+        with app.state.playback_lock:
+            _sync_finished_playback(app)
 
 
 def _playback_status(app: FastAPI) -> dict[str, object]:
@@ -200,6 +296,8 @@ def _playback_status(app: FastAPI) -> dict[str, object]:
         "elapsed_seconds": player_status["elapsed_seconds"],
         "duration_seconds": player_status["duration_seconds"],
         "paused": player_status["paused"],
+        "repeat_track": app.state.repeat_track,
+        "message": app.state.playback_message,
         "now_playing": {
             "path": current_track.path,
             "name": current_track.name,

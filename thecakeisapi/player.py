@@ -77,6 +77,20 @@ class MpvPlayer:
         self._paused = False
         return self.status()
 
+    def consume_finished(self) -> bool:
+        with self._lock:
+            if self._process is None:
+                return False
+
+            if self._process.poll() is None:
+                return False
+
+            self._process = None
+            self._current_path = None
+            self._started_at = None
+            self._paused = False
+            return True
+
     def status(self) -> dict[str, object]:
         process_id = None
         if self._process is not None and self._process.poll() is None:

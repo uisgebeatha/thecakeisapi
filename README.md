@@ -95,6 +95,7 @@ Configuration is validated when the app starts. The music root, `mpv_command`, a
 - `POST /api/player/local/stop` stops local mpv playback
 - `POST /api/player/local/next` plays the next track in the temporary queue
 - `POST /api/player/local/previous` plays the previous track in the temporary queue
+- `POST /api/player/local/repeat` toggles repeat-track mode
 - `GET /api/player/local/status` returns now-playing state, queue, elapsed time, and duration when mpv reports it
 
 To browse the root music folder:
@@ -128,6 +129,8 @@ curl -X POST "http://localhost:8000/api/player/local/play?path=Albums/example.mp
 The local playback endpoint starts `mpv` on the machine running the FastAPI app. It launches mpv with IPC enabled using `mpv_ipc_path`, and the local playback controls use that IPC socket where possible.
 
 The web UI sends the currently visible audio files as a temporary queue when Play on Pi is clicked. Queue state is kept in memory only and is shared by browsers connected to the same running app process.
+
+When a track finishes, the app advances to the next temporary queue item. If Repeat Track is enabled, it restarts the current track instead. At the end of the queue, playback stops cleanly and reports End of queue.
 
 ## Not Implemented Yet
 

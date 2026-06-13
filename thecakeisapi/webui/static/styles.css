@@ -299,6 +299,12 @@ button.entry-details-button {
   color: #216343;
 }
 
+.control-button[data-active="true"] {
+  border-color: #436aa8;
+  background: #e8eff8;
+  color: #264c87;
+}
+
 .control-button:hover,
 .control-button:focus-visible {
   background: #edf0f2;
@@ -438,6 +444,12 @@ progress {
     border-color: #5dad82;
     background: #20352b;
     color: #8fd8b5;
+  }
+
+  .control-button[data-active="true"] {
+    border-color: #84a8df;
+    background: #24344d;
+    color: #bed6fa;
   }
 
   .control-button:hover,

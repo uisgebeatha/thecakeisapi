@@ -15,6 +15,7 @@ const playButton = document.querySelector("#play-button");
 const pauseButton = document.querySelector("#pause-button");
 const stopButton = document.querySelector("#stop-button");
 const nextButton = document.querySelector("#next-button");
+const repeatButton = document.querySelector("#repeat-button");
 
 let currentDirectoryFiles = [];
 let lastPlaybackState = null;
@@ -233,6 +234,10 @@ function renderPlaybackState(playbackState) {
 }
 
 function playbackMessage(playbackState) {
+  if (playbackState.message) {
+    return playbackState.message;
+  }
+
   if (playbackState.state === "playing") {
     return "Playing on Pi";
   }
@@ -280,6 +285,8 @@ function updateTransportButtons(playbackState) {
   stopButton.disabled = !hasTrack || playbackState.state === "stopped";
   previousButton.disabled = !hasTrack;
   nextButton.disabled = !hasTrack;
+  repeatButton.dataset.active = playbackState.repeat_track ? "true" : "false";
+  repeatButton.setAttribute("aria-pressed", playbackState.repeat_track ? "true" : "false");
 
   playButton.textContent = isPaused ? "Play" : "Play";
 }
@@ -342,6 +349,11 @@ stopButton.addEventListener("click", () => {
 
 nextButton.addEventListener("click", () => {
   sendTransportCommand("/api/player/local/next");
+});
+
+repeatButton.addEventListener("click", () => {
+  const enabled = repeatButton.dataset.active !== "true";
+  sendTransportCommand(`/api/player/local/repeat?enabled=${enabled}`);
 });
 
 window.addEventListener("hashchange", () => {
