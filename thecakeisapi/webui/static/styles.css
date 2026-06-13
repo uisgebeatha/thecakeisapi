@@ -183,7 +183,7 @@ h1 {
 
 .entry-row {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) auto;
+  grid-template-columns: minmax(0, 1fr);
   align-items: center;
   width: 100%;
   min-height: 3.25rem;
@@ -254,7 +254,7 @@ button.entry-details-button {
 .play-button {
   align-self: stretch;
   border: 0;
-  border-left: 1px solid #d8d8d0;
+  border-top: 1px solid #d8d8d0;
   padding: 0 0.8rem;
   background: #eef4f8;
   color: #1e4158;
@@ -262,6 +262,17 @@ button.entry-details-button {
   font-size: 0.9rem;
   font-weight: 700;
   white-space: nowrap;
+}
+
+@media (min-width: 640px) {
+  .entry-row {
+    grid-template-columns: minmax(0, 1fr) auto auto;
+  }
+
+  .play-button {
+    border-top: 0;
+    border-left: 1px solid #d8d8d0;
+  }
 }
 
 .play-button:hover,

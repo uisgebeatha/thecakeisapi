@@ -35,7 +35,7 @@ uvicorn thecakeisapi.main:app --host 0.0.0.0 --port 8000
 
 Open `http://localhost:8000` in a browser.
 
-The web interface shows folders and supported audio files from the configured music root. Folder rows can be opened in the browser, folders can be queued with Play Folder, individual files can be started with Play Track, and the bottom playback bar shows shared local playback state for all connected browsers.
+The web interface shows folders and supported audio files from the configured music root. Folder rows can be opened in the browser, folders can be queued with Play Folder, individual files can be started with Play Track or appended with Add To Queue, and the bottom playback bar shows shared local playback state for all connected browsers.
 
 ## Configuration
 
@@ -97,6 +97,7 @@ Configuration is validated when the app starts. The music root, `mpv_command`, a
 - `POST /api/player/local/next` plays the next track in the temporary queue
 - `POST /api/player/local/previous` plays the previous track in the temporary queue
 - `POST /api/player/local/repeat` toggles repeat-track mode
+- `POST /api/player/local/queue/add` appends tracks to the temporary queue
 - `POST /api/player/local/queue/clear` clears the temporary queue and stops playback
 - `POST /api/player/local/queue/remove` removes a track from the temporary queue
 - `POST /api/player/local/queue/move-up` moves a queued track up
@@ -133,7 +134,7 @@ curl -X POST "http://localhost:8000/api/player/local/play?path=Albums/example.mp
 
 The local playback endpoint starts `mpv` on the machine running the FastAPI app. It launches mpv with IPC enabled using `mpv_ipc_path`, and the local playback controls use that IPC socket where possible.
 
-The web UI keeps queue state in memory only and shares it across browsers connected to the same running app process. Play Track queues only the selected file. Play Folder queues supported files directly inside that folder. Queue rows can be moved up, moved down, or removed, and the queue can be cleared.
+The web UI keeps queue state in memory only and shares it across browsers connected to the same running app process. Play Track queues only the selected file. Add To Queue appends an individual file without starting playback. Play Folder queues supported files directly inside that folder. Queue rows can be moved up, moved down, or removed, and the queue can be cleared.
 
 When a track finishes, the app advances to the next temporary queue item. If Repeat Track is enabled, it restarts the current track instead. At the end of the queue, playback stops cleanly and reports End of queue.
 

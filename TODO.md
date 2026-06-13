@@ -52,6 +52,7 @@
 - [x] Add seekable progress bar.
 - [x] Allow jumping to any position within the current track.
 - [x] Add clear queue button.
+- [x] Add visible Add To Queue control.
 - [x] Remove track from queue.
 - [x] Move queue item up.
 - [x] Move queue item down.

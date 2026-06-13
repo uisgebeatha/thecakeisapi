@@ -156,6 +156,13 @@ function createEntry(entry) {
     playButton.textContent = "Play Track";
     playButton.addEventListener("click", () => playTrack(entry, playButton));
     row.appendChild(playButton);
+
+    const addButton = document.createElement("button");
+    addButton.className = "play-button";
+    addButton.type = "button";
+    addButton.textContent = "Add To Queue";
+    addButton.addEventListener("click", () => addToQueue(entry, addButton));
+    row.appendChild(addButton);
   }
 
   item.appendChild(row);
@@ -239,6 +246,39 @@ async function playPaths({ path, queuePaths, label, playButton }) {
   } finally {
     playButton.disabled = false;
     playButton.textContent = originalText;
+  }
+}
+
+async function addToQueue(entry, addButton) {
+  const originalText = addButton.textContent;
+  addButton.disabled = true;
+  addButton.textContent = "Adding";
+  playbackStatus.textContent = `Adding ${entry.name} to queue...`;
+  playbackStatus.dataset.state = "";
+
+  try {
+    const response = await fetch("/api/player/local/queue/add", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        queue_paths: [entry.path],
+      }),
+    });
+
+    if (!response.ok) {
+      const error = await response.json();
+      throw new Error(error.detail || "Queue request failed");
+    }
+
+    await renderPlaybackResponse(response);
+  } catch (error) {
+    playbackStatus.textContent = `Could not add to queue: ${error.message}`;
+    playbackStatus.dataset.state = "error";
+  } finally {
+    addButton.disabled = false;
+    addButton.textContent = originalText;
   }
 }
 

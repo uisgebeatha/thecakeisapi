@@ -28,6 +28,10 @@ class PlayRequest(BaseModel):
     queue_paths: list[str] = Field(default_factory=list)
 
 
+class QueueAddRequest(BaseModel):
+    queue_paths: list[str] = Field(default_factory=list)
+
+
 def create_app(settings: Settings | None = None) -> FastAPI:
     app_settings = settings or Settings.from_environment()
 
@@ -224,6 +228,28 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             app.state.local_player.stop()
             app.state.playback_message = "Queue cleared"
             return _playback_status(app)
+
+    @app.post("/api/player/local/queue/add")
+    def add_local_queue_tracks(request: QueueAddRequest) -> dict[str, object]:
+        try:
+            with app.state.playback_lock:
+                queue_tracks = _validated_queue_tracks(
+                    app_settings.music_root,
+                    request.queue_paths,
+                )
+                app.state.playback_queue.add_tracks(queue_tracks)
+                app.state.playback_message = (
+                    f"Added {len(queue_tracks)} track to queue"
+                    if len(queue_tracks) == 1
+                    else f"Added {len(queue_tracks)} tracks to queue"
+                )
+                return _playback_status(app)
+        except LibraryPathError as error:
+            raise HTTPException(status_code=400, detail=str(error)) from error
+        except LibraryNotFoundError as error:
+            raise HTTPException(status_code=404, detail=str(error)) from error
+        except UnsupportedAudioFileError as error:
+            raise HTTPException(status_code=415, detail=str(error)) from error
 
     @app.post("/api/player/local/queue/remove")
     def remove_local_queue_track(path: str) -> dict[str, object]:

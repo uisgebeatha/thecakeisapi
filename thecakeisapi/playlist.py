@@ -28,6 +28,12 @@ class PlaybackQueue:
             self._current_index = current_index
             return self._tracks[self._current_index]
 
+    def add_tracks(self, tracks: list[QueueTrack]) -> None:
+        with self._lock:
+            self._tracks.extend(tracks)
+            if self._current_index is None and self._tracks:
+                self._current_index = 0
+
     def current(self) -> QueueTrack | None:
         with self._lock:
             return self._current_unlocked()
