@@ -6,7 +6,7 @@ from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 
-from .bose import BoseKeyClient, BosePlaybackError, SoundTouchCliClient, build_library_stream_url
+from .bose import BosePlaybackError, SoundTouchCliClient, build_library_stream_url
 from .library import (
     LibraryNotFoundError,
     LibraryPathError,
@@ -52,11 +52,6 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             app_settings.bose_speaker_ip,
             app_settings.aftertouch_base_url,
         )
-        if app_settings.bose_speaker_ip and app_settings.aftertouch_base_url
-        else None
-    )
-    app.state.bose_key_client = (
-        BoseKeyClient(app_settings.bose_speaker_ip, app_settings.bose_api_port)
         if app_settings.bose_speaker_ip
         else None
     )
@@ -479,10 +474,10 @@ def _play_bose_track(app: FastAPI, track: QueueTrack) -> None:
 
 
 def _stop_bose_playback(app: FastAPI) -> None:
-    if app.state.bose_key_client is None:
+    if app.state.bose_client is None:
         raise BosePlaybackError("bose_speaker_ip is not configured")
 
-    app.state.bose_key_client.stop()
+    app.state.bose_client.stop()
     app.state.bose_playing = False
 
 

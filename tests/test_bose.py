@@ -3,11 +3,9 @@ import subprocess
 import unittest
 from unittest.mock import patch
 from urllib.parse import urlparse
-from urllib.error import URLError
 
 from thecakeisapi.bose import (
     AfterTouchClient,
-    BoseKeyClient,
     BosePlaybackError,
     SoundTouchCliClient,
     build_library_stream_url,
@@ -136,46 +134,71 @@ class SoundTouchCliClientTests(unittest.TestCase):
                 "http://192.168.42.190:8000/api/library/file?path=song.mp3",
             )
 
+    def test_build_stop_command_uses_soundtouch_cli_play_stop(self) -> None:
+        command = SoundTouchCliClient(
+            "soundtouch-cli",
+            "192.168.42.101",
+            "http://bose-controller.local",
+        ).build_stop_command()
 
-class BoseKeyClientTests(unittest.TestCase):
-    @patch("thecakeisapi.bose.urlopen")
-    def test_stop_sends_press_and_release_to_bose_key_api(self, urlopen_mock) -> None:
-        response = type(
-            "Response",
-            (),
-            {
-                "status": 200,
-                "__enter__": lambda self: self,
-                "__exit__": lambda self, *args: False,
-            },
-        )
-        urlopen_mock.return_value = response()
-
-        BoseKeyClient("192.168.42.101", 8090).stop()
-
-        self.assertEqual(urlopen_mock.call_count, 2)
-        press_request = urlopen_mock.call_args_list[0].args[0]
-        release_request = urlopen_mock.call_args_list[1].args[0]
-        self.assertEqual(press_request.full_url, "http://192.168.42.101:8090/key")
-        self.assertEqual(release_request.full_url, "http://192.168.42.101:8090/key")
         self.assertEqual(
-            press_request.data,
-            b'<key state="press" sender="thecakeisapi">STOP</key>',
-        )
-        self.assertEqual(
-            release_request.data,
-            b'<key state="release" sender="thecakeisapi">STOP</key>',
+            command,
+            [
+                "soundtouch-cli",
+                "--host",
+                "192.168.42.101",
+                "play",
+                "stop",
+            ],
         )
 
-    @patch("thecakeisapi.bose.urlopen")
-    def test_stop_reports_key_api_failure(self, urlopen_mock) -> None:
-        urlopen_mock.side_effect = URLError("connection refused")
+    @patch("thecakeisapi.bose.subprocess.run")
+    def test_stop_runs_soundtouch_cli_play_stop(self, run_mock) -> None:
+        run_mock.return_value = subprocess.CompletedProcess(
+            args=[],
+            returncode=0,
+            stdout="",
+            stderr="",
+        )
+
+        SoundTouchCliClient(
+            "soundtouch-cli",
+            "192.168.42.101",
+            "http://bose-controller.local",
+        ).stop()
+
+        run_mock.assert_called_once_with(
+            [
+                "soundtouch-cli",
+                "--host",
+                "192.168.42.101",
+                "play",
+                "stop",
+            ],
+            capture_output=True,
+            check=False,
+            text=True,
+            timeout=15,
+        )
+
+    @patch("thecakeisapi.bose.subprocess.run")
+    def test_stop_reports_cli_failure_output(self, run_mock) -> None:
+        run_mock.return_value = subprocess.CompletedProcess(
+            args=[],
+            returncode=1,
+            stdout="",
+            stderr="stop failed",
+        )
 
         with self.assertRaisesRegex(
             BosePlaybackError,
-            "Bose key API request failed",
+            "soundtouch-cli stop failed: stop failed",
         ):
-            BoseKeyClient("192.168.42.101", 8090).stop()
+            SoundTouchCliClient(
+                "soundtouch-cli",
+                "192.168.42.101",
+                "http://bose-controller.local",
+            ).stop()
 
 
 if __name__ == "__main__":

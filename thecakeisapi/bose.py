@@ -50,15 +50,18 @@ class SoundTouchCliClient:
         self,
         command: str,
         speaker_ip: str,
-        service_url: str,
+        service_url: str | None,
         timeout_seconds: float = 15,
     ) -> None:
         self.command = command
         self.speaker_ip = speaker_ip
-        self.service_url = service_url.rstrip("/")
+        self.service_url = service_url.rstrip("/") if service_url else None
         self.timeout_seconds = timeout_seconds
 
     def build_custom_radio_command(self, name: str, stream_url: str) -> list[str]:
+        if not self.service_url:
+            raise BosePlaybackError("aftertouch_base_url is not configured")
+
         return [
             self.command,
             "--host",
@@ -73,9 +76,28 @@ class SoundTouchCliClient:
             stream_url,
         ]
 
+    def build_stop_command(self) -> list[str]:
+        return [
+            self.command,
+            "--host",
+            self.speaker_ip,
+            "play",
+            "stop",
+        ]
+
     def play_stream(self, name: str, stream_url: str) -> BosePlaybackRequest:
         command = self.build_custom_radio_command(name, stream_url)
+        self._run_command(command, "playback")
 
+        return BosePlaybackRequest(
+            stream_url=stream_url,
+            command=command,
+        )
+
+    def stop(self) -> None:
+        self._run_command(self.build_stop_command(), "stop")
+
+    def _run_command(self, command: list[str], action: str) -> None:
         try:
             completed_process = subprocess.run(
                 command,
@@ -97,48 +119,7 @@ class SoundTouchCliClient:
             error_output = completed_process.stderr.strip() or completed_process.stdout.strip()
             if not error_output:
                 error_output = f"exit code {completed_process.returncode}"
-            raise BosePlaybackError(f"soundtouch-cli playback failed: {error_output}")
-
-        return BosePlaybackRequest(
-            stream_url=stream_url,
-            command=command,
-        )
-
-
-class BoseKeyClient:
-    def __init__(
-        self,
-        speaker_ip: str,
-        api_port: int = 8090,
-        timeout_seconds: float = 8,
-    ) -> None:
-        self.base_url = f"http://{speaker_ip}:{api_port}/"
-        self.timeout_seconds = timeout_seconds
-
-    def stop(self) -> None:
-        self.send_key("STOP")
-
-    def send_key(self, key_name: str) -> None:
-        self._send_key_state(key_name, "press")
-        self._send_key_state(key_name, "release")
-
-    def _send_key_state(self, key_name: str, state: str) -> None:
-        payload = f'<key state="{state}" sender="thecakeisapi">{key_name}</key>'.encode(
-            "utf-8",
-        )
-        request = Request(
-            urljoin(self.base_url, "key"),
-            data=payload,
-            headers={"Content-Type": "application/xml"},
-            method="POST",
-        )
-
-        try:
-            with urlopen(request, timeout=self.timeout_seconds) as response:
-                if response.status >= 400:
-                    raise BosePlaybackError(f"Bose key API returned HTTP {response.status}")
-        except URLError as error:
-            raise BosePlaybackError(f"Bose key API request failed: {error}") from error
+            raise BosePlaybackError(f"soundtouch-cli {action} failed: {error_output}")
 
 
 def build_library_stream_url(public_base_url: str, library_path: str) -> str:
