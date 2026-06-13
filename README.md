@@ -182,7 +182,7 @@ http://192.168.42.100:8000/api/library/file?path=Albums%2Fexample.mp3
 Then it calls AfterTouch using the custom playback URL format:
 
 ```text
-http://192.168.42.102/custom/v1/playback/<encoded stream URL>
+http://192.168.42.102/custom/v1/playback/<base64-encoded stream URL>
 ```
 
 When this works, the Pi 4 FastAPI logs should show the Bose speaker requesting `/api/library/file`. This confirms the audio is not being proxied through the Pi Zero.

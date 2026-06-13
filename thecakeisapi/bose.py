@@ -1,6 +1,7 @@
+import base64
 from dataclasses import dataclass
 from urllib.error import URLError
-from urllib.parse import quote, urlencode, urljoin
+from urllib.parse import urlencode, urljoin
 from urllib.request import Request, urlopen
 
 
@@ -20,7 +21,7 @@ class AfterTouchClient:
         self.timeout_seconds = timeout_seconds
 
     def build_custom_playback_url(self, stream_url: str) -> str:
-        encoded_stream_url = quote(stream_url, safe="")
+        encoded_stream_url = base64.b64encode(stream_url.encode("utf-8")).decode("ascii")
         return urljoin(self.base_url, f"custom/v1/playback/{encoded_stream_url}")
 
     def play_stream(self, stream_url: str) -> BosePlaybackRequest:
