@@ -1,6 +1,8 @@
 import base64
 import subprocess
+import time
 from dataclasses import dataclass
+from xml.etree import ElementTree
 from urllib.error import URLError
 from urllib.parse import urlencode, urljoin
 from urllib.request import Request, urlopen
@@ -15,6 +17,73 @@ class BosePlaybackRequest:
     stream_url: str
     playback_url: str | None = None
     command: list[str] | None = None
+
+
+@dataclass(frozen=True)
+class BoseNowPlayingStatus:
+    source: str | None
+    raw_text: str
+
+    @property
+    def appears_to_be_custom_radio(self) -> bool:
+        normalized_text = self.raw_text.upper()
+        normalized_source = (self.source or "").upper()
+        if "STANDBY" in normalized_source or "STANDBY" in normalized_text:
+            return False
+
+        custom_markers = (
+            "CUSTOM",
+            "INTERNET_RADIO",
+            "INTERNET RADIO",
+            "LOCAL_INTERNET_RADIO",
+            "LOCAL INTERNET RADIO",
+            "RADIO",
+        )
+        return any(
+            marker in normalized_source or marker in normalized_text
+            for marker in custom_markers
+        )
+
+
+@dataclass
+class BosePlaybackState:
+    track_path: str | None = None
+    track_name: str | None = None
+    state: str = "stopped"
+    start_timestamp: float | None = None
+    confirmed_start_timestamp: float | None = None
+    duration_seconds: float | None = None
+    stream_url: str | None = None
+    command: list[str] | None = None
+    warning: str | None = None
+
+    def elapsed_seconds(self, now: float | None = None) -> float | None:
+        if self.confirmed_start_timestamp is None:
+            return None
+        current_time = time.time() if now is None else now
+        return max(0.0, current_time - self.confirmed_start_timestamp)
+
+    def should_auto_advance(self, buffer_seconds: float, now: float | None = None) -> bool:
+        if self.state != "playing" or self.duration_seconds is None:
+            return False
+
+        elapsed_seconds = self.elapsed_seconds(now)
+        if elapsed_seconds is None:
+            return False
+
+        return elapsed_seconds >= self.duration_seconds + buffer_seconds
+
+    def stop(self) -> None:
+        self.state = "stopped"
+        self.confirmed_start_timestamp = None
+        self.warning = None
+
+    def ended(self) -> None:
+        self.state = "ended"
+
+    def error(self, message: str) -> None:
+        self.state = "error"
+        self.warning = message
 
 
 class AfterTouchClient:
@@ -120,6 +189,66 @@ class SoundTouchCliClient:
             if not error_output:
                 error_output = f"exit code {completed_process.returncode}"
             raise BosePlaybackError(f"soundtouch-cli {action} failed: {error_output}")
+
+
+class BoseNowPlayingClient:
+    def __init__(
+        self,
+        speaker_ip: str,
+        api_port: int = 8090,
+        timeout_seconds: float = 3,
+    ) -> None:
+        self.now_playing_url = f"http://{speaker_ip}:{api_port}/now_playing"
+        self.timeout_seconds = timeout_seconds
+
+    def fetch_status(self) -> BoseNowPlayingStatus:
+        request = Request(self.now_playing_url, method="GET")
+        try:
+            with urlopen(request, timeout=self.timeout_seconds) as response:
+                body = response.read().decode("utf-8", errors="replace")
+        except URLError as error:
+            raise BosePlaybackError(f"Bose now_playing request failed: {error}") from error
+
+        return parse_now_playing(body)
+
+    def wait_for_custom_radio(
+        self,
+        timeout_seconds: float,
+        poll_interval_seconds: float,
+        previous_status: BoseNowPlayingStatus | None = None,
+    ) -> BoseNowPlayingStatus | None:
+        deadline = time.monotonic() + timeout_seconds
+        previous_raw_text = previous_status.raw_text if previous_status else None
+        previous_was_standby = (
+            previous_status is not None
+            and "STANDBY" in previous_status.raw_text.upper()
+        )
+
+        while True:
+            status = self.fetch_status()
+            changed = previous_raw_text is None or status.raw_text != previous_raw_text
+            if status.appears_to_be_custom_radio and (changed or not previous_was_standby):
+                return status
+
+            if time.monotonic() >= deadline:
+                return None
+
+            time.sleep(poll_interval_seconds)
+
+
+def parse_now_playing(raw_text: str) -> BoseNowPlayingStatus:
+    try:
+        root = ElementTree.fromstring(raw_text)
+    except ElementTree.ParseError:
+        return BoseNowPlayingStatus(source=None, raw_text=raw_text)
+
+    source = root.attrib.get("source")
+    if not source:
+        content_item = root.find(".//ContentItem")
+        if content_item is not None:
+            source = content_item.attrib.get("source")
+
+    return BoseNowPlayingStatus(source=source, raw_text=raw_text)
 
 
 def build_library_stream_url(public_base_url: str, library_path: str) -> str:

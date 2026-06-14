@@ -69,11 +69,16 @@
 - [x] Generate Pi 4 stream URLs from selected library files.
 - [x] Send selected tracks to Bose through `soundtouch-cli source custom-radio`.
 - [x] Stop Bose playback with `soundtouch-cli play stop`.
+- [x] Poll Bose `/now_playing` after starting Bose playback.
+- [x] Track Bose app-side playback state and elapsed time.
+- [x] Estimate Bose queue auto-advance from local duration plus buffer.
+- [x] Respect Repeat Track for Bose estimated auto-advance.
 - [x] Add output selector:
   - [x] Local Pi
   - [x] Bose SoundTouch
 - [x] Maintain queue when changing output where practical.
-- [ ] Display live Bose playback status from the speaker.
+- [x] Display Bose app-side playback/timer status.
+- [ ] Display live Bose playback status from the speaker beyond start confirmation.
 - [ ] Preserve playback position where practical.
 
 ## Milestone 5 – NAS Storage

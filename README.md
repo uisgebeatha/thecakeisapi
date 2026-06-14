@@ -47,6 +47,9 @@ The application starts with sensible defaults if no settings file exists:
 - `aftertouch_base_url`: unset
 - `public_base_url`: unset
 - `soundtouch_cli_command`: `soundtouch-cli`
+- `bose_start_confirm_timeout_seconds`: `8.0`
+- `bose_start_poll_interval_seconds`: `0.5`
+- `bose_auto_advance_buffer_seconds`: `1.5`
 - `mpv_command`: `mpv`
 - `mpv_ipc_path`: `/tmp/thecakeisapi-mpv.sock`
 
@@ -60,6 +63,9 @@ For local configuration, copy `config.example.json` to `config.json` and edit it
   "aftertouch_base_url": "http://192.168.42.102",
   "public_base_url": "http://192.168.42.100:8000",
   "soundtouch_cli_command": "soundtouch-cli",
+  "bose_start_confirm_timeout_seconds": 8.0,
+  "bose_start_poll_interval_seconds": 0.5,
+  "bose_auto_advance_buffer_seconds": 1.5,
   "mpv_command": "mpv",
   "mpv_ipc_path": "/tmp/thecakeisapi-mpv.sock"
 }
@@ -99,7 +105,7 @@ THECAKEISAPI_SOUNDTOUCH_CLI_COMMAND=/usr/local/bin/soundtouch-cli uvicorn thecak
 THECAKEISAPI_MPV_COMMAND=/usr/bin/mpv uvicorn thecakeisapi.main:app --host 0.0.0.0 --port 8000
 ```
 
-Configuration is validated when the app starts. The music root, `mpv_command`, `mpv_ipc_path`, and `soundtouch_cli_command` must not be empty. `bose_speaker_ip` must be either `null`, omitted, or a valid IP address. `bose_api_port` must be between `1` and `65535`. `aftertouch_base_url` and `public_base_url` must be HTTP or HTTPS URLs when set.
+Configuration is validated when the app starts. The music root, `mpv_command`, `mpv_ipc_path`, and `soundtouch_cli_command` must not be empty. `bose_speaker_ip` must be either `null`, omitted, or a valid IP address. `bose_api_port` must be between `1` and `65535`. `aftertouch_base_url` and `public_base_url` must be HTTP or HTTPS URLs when set. Bose timing values must be non-negative, and `bose_start_poll_interval_seconds` must be greater than `0`.
 
 For Bose playback, `public_base_url` must be the Pi 4 URL that the Bose speaker can fetch on the local network. Do not use `localhost` for this setting. The intended audio path is:
 
@@ -200,7 +206,11 @@ When this works, the Pi 4 FastAPI logs should show the Bose speaker requesting `
 
 Bose Stop runs `soundtouch-cli --host <bose_speaker_ip> play stop`. It does not power off the speaker or switch sources. Bose Pause and seek are not enabled yet.
 
+After a Bose play command is sent, the app polls `http://<bose_speaker_ip>:<bose_api_port>/now_playing` for a short confirmation window. The Bose app-side timer starts only after the speaker appears to have switched to a custom/local internet radio source. If confirmation times out, status reports a warning instead of pretending playback is fully confirmed.
+
+When local duration can be determined from the audio file, the Bose timer counts up in the UI and the app estimates end-of-track using `duration + bose_auto_advance_buffer_seconds`. It then advances the shared queue, or replays the same track when Repeat Track is enabled. If duration is unknown, elapsed time may be shown after confirmation, but automatic advance is disabled.
+
 ## Not Implemented Yet
 
 - Persistent playlists
-- Bose pause, seek, and duration reporting
+- Bose pause and seek

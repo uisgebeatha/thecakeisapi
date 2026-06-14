@@ -15,6 +15,9 @@ class Settings:
     aftertouch_base_url: str | None = None
     public_base_url: str | None = None
     soundtouch_cli_command: str = "soundtouch-cli"
+    bose_start_confirm_timeout_seconds: float = 8.0
+    bose_start_poll_interval_seconds: float = 0.5
+    bose_auto_advance_buffer_seconds: float = 1.5
     mpv_command: str = "mpv"
     mpv_ipc_path: Path = Path("/tmp/thecakeisapi-mpv.sock")
     config_path: Path | None = field(default=None, repr=False)
@@ -52,6 +55,36 @@ class Settings:
                 cls.soundtouch_cli_command,
             ),
         )
+        bose_start_confirm_timeout_seconds = os.getenv(
+            "THECAKEISAPI_BOSE_START_CONFIRM_TIMEOUT_SECONDS",
+            str(
+                cls._read_number(
+                    config_values,
+                    "bose_start_confirm_timeout_seconds",
+                    cls.bose_start_confirm_timeout_seconds,
+                ),
+            ),
+        )
+        bose_start_poll_interval_seconds = os.getenv(
+            "THECAKEISAPI_BOSE_START_POLL_INTERVAL_SECONDS",
+            str(
+                cls._read_number(
+                    config_values,
+                    "bose_start_poll_interval_seconds",
+                    cls.bose_start_poll_interval_seconds,
+                ),
+            ),
+        )
+        bose_auto_advance_buffer_seconds = os.getenv(
+            "THECAKEISAPI_BOSE_AUTO_ADVANCE_BUFFER_SECONDS",
+            str(
+                cls._read_number(
+                    config_values,
+                    "bose_auto_advance_buffer_seconds",
+                    cls.bose_auto_advance_buffer_seconds,
+                ),
+            ),
+        )
         mpv_command = os.getenv(
             "THECAKEISAPI_MPV_COMMAND",
             cls._read_string(config_values, "mpv_command", cls.mpv_command),
@@ -68,6 +101,18 @@ class Settings:
             aftertouch_base_url=aftertouch_base_url,
             public_base_url=public_base_url,
             soundtouch_cli_command=soundtouch_cli_command,
+            bose_start_confirm_timeout_seconds=cls._parse_float(
+                "bose_start_confirm_timeout_seconds",
+                bose_start_confirm_timeout_seconds,
+            ),
+            bose_start_poll_interval_seconds=cls._parse_float(
+                "bose_start_poll_interval_seconds",
+                bose_start_poll_interval_seconds,
+            ),
+            bose_auto_advance_buffer_seconds=cls._parse_float(
+                "bose_auto_advance_buffer_seconds",
+                bose_auto_advance_buffer_seconds,
+            ),
             mpv_command=mpv_command,
             mpv_ipc_path=Path(mpv_ipc_path),
             config_path=resolved_config_path if resolved_config_path.exists() else None,
@@ -101,10 +146,19 @@ class Settings:
         if self.bose_api_port < 1 or self.bose_api_port > 65535:
             raise ValueError("bose_api_port must be between 1 and 65535")
 
+        if self.bose_start_confirm_timeout_seconds < 0:
+            raise ValueError("bose_start_confirm_timeout_seconds must not be negative")
+
+        if self.bose_start_poll_interval_seconds <= 0:
+            raise ValueError("bose_start_poll_interval_seconds must be greater than 0")
+
+        if self.bose_auto_advance_buffer_seconds < 0:
+            raise ValueError("bose_auto_advance_buffer_seconds must not be negative")
+
         self._validate_optional_url("aftertouch_base_url", self.aftertouch_base_url)
         self._validate_optional_url("public_base_url", self.public_base_url)
 
-    def as_dict(self) -> dict[str, str | int | None]:
+    def as_dict(self) -> dict[str, str | int | float | None]:
         return {
             "music_root": str(self.music_root),
             "bose_speaker_ip": self.bose_speaker_ip,
@@ -112,6 +166,9 @@ class Settings:
             "aftertouch_base_url": self.aftertouch_base_url,
             "public_base_url": self.public_base_url,
             "soundtouch_cli_command": self.soundtouch_cli_command,
+            "bose_start_confirm_timeout_seconds": self.bose_start_confirm_timeout_seconds,
+            "bose_start_poll_interval_seconds": self.bose_start_poll_interval_seconds,
+            "bose_auto_advance_buffer_seconds": self.bose_auto_advance_buffer_seconds,
             "mpv_command": self.mpv_command,
             "mpv_ipc_path": str(self.mpv_ipc_path),
             "config_path": str(self.config_path) if self.config_path else None,
@@ -143,6 +200,9 @@ class Settings:
             "aftertouch_base_url",
             "public_base_url",
             "soundtouch_cli_command",
+            "bose_start_confirm_timeout_seconds",
+            "bose_start_poll_interval_seconds",
+            "bose_auto_advance_buffer_seconds",
             "mpv_command",
             "mpv_ipc_path",
         }
@@ -184,11 +244,25 @@ class Settings:
         return value
 
     @staticmethod
+    def _read_number(config_values: dict[str, Any], key: str, default: float) -> float:
+        value = config_values.get(key, default)
+        if not isinstance(value, (float, int)):
+            raise ValueError(f"{key} must be a number")
+        return float(value)
+
+    @staticmethod
     def _parse_int(key: str, value: str) -> int:
         try:
             return int(value)
         except ValueError as error:
             raise ValueError(f"{key} must be an integer") from error
+
+    @staticmethod
+    def _parse_float(key: str, value: str) -> float:
+        try:
+            return float(value)
+        except ValueError as error:
+            raise ValueError(f"{key} must be a number") from error
 
     @staticmethod
     def _validate_optional_url(key: str, value: str | None) -> None:

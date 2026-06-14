@@ -5,6 +5,9 @@
   "aftertouch_base_url": "http://192.168.42.102",
   "public_base_url": "http://192.168.42.100:8000",
   "soundtouch_cli_command": "soundtouch-cli",
+  "bose_start_confirm_timeout_seconds": 8.0,
+  "bose_start_poll_interval_seconds": 0.5,
+  "bose_auto_advance_buffer_seconds": 1.5,
   "mpv_command": "mpv",
   "mpv_ipc_path": "/tmp/thecakeisapi-mpv.sock"
 }

@@ -345,15 +345,6 @@ function playbackMessage(playbackState) {
 }
 
 function renderTimer(playbackState) {
-  if (selectedOutput() === "bose") {
-    elapsedTime.textContent = "0:00";
-    durationTime.textContent = "--:--";
-    trackProgress.max = 100;
-    trackProgress.value = 0;
-    trackProgress.disabled = true;
-    return;
-  }
-
   const elapsed = playbackState.elapsed_seconds;
   const duration = playbackState.duration_seconds;
 
