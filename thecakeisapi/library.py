@@ -2,6 +2,14 @@ from pathlib import Path
 
 
 SUPPORTED_AUDIO_EXTENSIONS = {".flac", ".mp3"}
+HIDDEN_METADATA_DIRECTORIES = {
+    "$recycle.bin",
+    ".fseventsd",
+    ".spotlight-v100",
+    ".trashes",
+    "lost+found",
+    "system volume information",
+}
 AUDIO_MEDIA_TYPES = {
     ".flac": "audio/flac",
     ".mp3": "audio/mpeg",
@@ -45,6 +53,9 @@ def list_directory(music_root: Path, requested_path: str = "") -> dict[str, obje
     files: list[dict[str, object]] = []
 
     for child_path in directory_path.iterdir():
+        if child_path.is_dir() and is_hidden_metadata_directory(child_path):
+            continue
+
         if child_path.is_dir():
             directories.append(_directory_entry(root_path, child_path))
         elif is_supported_audio_file(child_path):
@@ -77,6 +88,10 @@ def resolve_library_path(music_root: Path, requested_path: str) -> Path:
 
 def is_supported_audio_file(path: Path) -> bool:
     return path.is_file() and path.suffix.casefold() in SUPPORTED_AUDIO_EXTENSIONS
+
+
+def is_hidden_metadata_directory(path: Path) -> bool:
+    return path.name.casefold() in HIDDEN_METADATA_DIRECTORIES
 
 
 def resolve_audio_file(music_root: Path, requested_path: str) -> Path:

@@ -49,7 +49,7 @@ The application starts with sensible defaults if no settings file exists:
 - `soundtouch_cli_command`: `soundtouch-cli`
 - `bose_start_confirm_timeout_seconds`: `8.0`
 - `bose_start_poll_interval_seconds`: `0.5`
-- `bose_auto_advance_buffer_seconds`: `1.5`
+- `bose_auto_advance_buffer_seconds`: `1.0`
 - `mpv_command`: `mpv`
 - `mpv_ipc_path`: `/tmp/thecakeisapi-mpv.sock`
 
@@ -65,7 +65,7 @@ For local configuration, copy `config.example.json` to `config.json` and edit it
   "soundtouch_cli_command": "soundtouch-cli",
   "bose_start_confirm_timeout_seconds": 8.0,
   "bose_start_poll_interval_seconds": 0.5,
-  "bose_auto_advance_buffer_seconds": 1.5,
+  "bose_auto_advance_buffer_seconds": 1.0,
   "mpv_command": "mpv",
   "mpv_ipc_path": "/tmp/thecakeisapi-mpv.sock"
 }
@@ -162,6 +162,8 @@ curl "http://localhost:8000/api/library/browse?path=Albums"
 
 The browse endpoint returns directories and supported audio files only. Supported extensions are currently `.mp3` and `.flac`. Requested paths must stay inside the configured music root; absolute paths and path traversal attempts are rejected.
 
+The browser hides common storage metadata folders such as `$RECYCLE.BIN`, `System Volume Information`, `.Trashes`, `.Spotlight-V100`, `.fseventsd`, and `lost+found`.
+
 To stream a supported audio file, pass the relative file path returned by the browse endpoint:
 
 ```bash
@@ -209,6 +211,8 @@ Bose Stop runs `soundtouch-cli --host <bose_speaker_ip> play stop`. It does not 
 After a Bose play command is sent, the app polls `http://<bose_speaker_ip>:<bose_api_port>/now_playing` for a short confirmation window. The Bose app-side timer starts only after the speaker appears to have switched to a custom/local internet radio source. If confirmation times out, status reports a warning instead of pretending playback is fully confirmed.
 
 When local duration can be determined from the audio file, the Bose timer counts up in the UI and the app estimates end-of-track using `duration + bose_auto_advance_buffer_seconds`. It then advances the shared queue, or replays the same track when Repeat Track is enabled. If duration is unknown, elapsed time may be shown after confirmation, but automatic advance is disabled.
+
+Only one output should be active at a time. Starting Bose playback stops local mpv playback first, and starting local Pi playback stops active Bose playback first.
 
 ## Not Implemented Yet
 

@@ -81,6 +81,15 @@
 - [ ] Display live Bose playback status from the speaker beyond start confirmation.
 - [ ] Preserve playback position where practical.
 
+## Playback State Cleanup and Library Polish
+
+- [x] Preserve Bose playback UI state after browser refresh through backend status.
+- [x] Keep Bose Stop available after browser refresh while Bose playback is active.
+- [x] Stop Pi 4 local mpv playback before starting Bose playback.
+- [x] Stop Bose playback before starting Pi 4 local playback.
+- [x] Lower default Bose auto-advance buffer to 1 second.
+- [x] Hide common filesystem metadata folders from library browsing.
+
 ## Milestone 5 – NAS Storage
 
 - USB SSD attached to Pi.
@@ -90,10 +99,6 @@
 - Disk usage reporting.
 
 ## Minor Improvements
-
-- Hide Windows metadata folders:
-  - $RECYCLE.BIN
-  - System Volume Information
 
 - Improve VLC-style UI layout.
 - Better mobile layout.

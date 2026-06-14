@@ -19,6 +19,9 @@ from thecakeisapi.bose import (
     parse_now_playing,
 )
 from thecakeisapi.main import (
+    _play_bose_track,
+    _play_track,
+    _playback_status,
     _stop_bose_playback,
     _sync_bose_playback,
     create_app,
@@ -282,6 +285,59 @@ class BosePlaybackStateTests(unittest.TestCase):
         self.assertIsNone(state.elapsed_seconds(now=120.0))
 
 
+class PlaybackCleanupTests(unittest.TestCase):
+    def test_default_bose_auto_advance_buffer_is_one_second(self) -> None:
+        self.assertEqual(Settings().bose_auto_advance_buffer_seconds, 1.0)
+
+    def test_bose_status_survives_refresh_equivalent_status_read(self) -> None:
+        with temp_music_app() as app:
+            app.state.playback_queue.set_tracks(
+                [QueueTrack(path="first.mp3", name="first.mp3")],
+                "first.mp3",
+            )
+            app.state.active_output = "bose"
+            app.state.bose_playback_state = BosePlaybackState(
+                track_path="first.mp3",
+                track_name="first.mp3",
+                state="playing",
+                confirmed_start_timestamp=time.time() - 2,
+                duration_seconds=10.0,
+            )
+
+            status = _playback_status(app)
+
+            self.assertEqual(status["active_output"], "bose")
+            self.assertEqual(status["state"], "playing")
+            self.assertEqual(status["now_playing"]["path"], "first.mp3")
+            self.assertGreaterEqual(status["elapsed_seconds"], 2.0)
+
+    def test_starting_bose_stops_local_playback_first(self) -> None:
+        with temp_music_app() as app:
+            local_player = FakeLocalPlayer()
+            app.state.local_player = local_player
+
+            _play_bose_track(app, QueueTrack(path="first.mp3", name="first.mp3"))
+
+            self.assertEqual(local_player.stop_count, 1)
+            self.assertEqual(app.state.bose_client.played_names, ["first.mp3"])
+
+    def test_starting_local_playback_stops_active_bose_first(self) -> None:
+        with temp_music_app() as app:
+            local_player = FakeLocalPlayer()
+            app.state.local_player = local_player
+            app.state.active_output = "bose"
+            app.state.bose_playback_state = BosePlaybackState(
+                state="playing",
+                confirmed_start_timestamp=time.time() - 2,
+                duration_seconds=10.0,
+            )
+
+            _play_track(app, QueueTrack(path="first.mp3", name="first.mp3"))
+
+            self.assertTrue(app.state.bose_client.stopped)
+            self.assertEqual(local_player.played_paths, ["first.mp3"])
+
+
 class BoseAutoAdvanceTests(unittest.TestCase):
     def test_bose_auto_advance_starts_next_track(self) -> None:
         with temp_music_app() as app:
@@ -363,6 +419,30 @@ class FakeBoseClient:
 
     def stop(self) -> None:
         self.stopped = True
+
+
+class FakeLocalPlayer:
+    def __init__(self) -> None:
+        self.stop_count = 0
+        self.played_paths: list[str] = []
+
+    def stop(self):
+        self.stop_count += 1
+        return self.status()
+
+    def play(self, audio_path: Path):
+        self.played_paths.append(audio_path.name)
+        return self.status()
+
+    def status(self):
+        return {
+            "backend": "mpv",
+            "state": "stopped",
+            "process_id": None,
+            "elapsed_seconds": None,
+            "duration_seconds": None,
+            "paused": False,
+        }
 
 
 class temp_music_app:

@@ -17,7 +17,7 @@ class Settings:
     soundtouch_cli_command: str = "soundtouch-cli"
     bose_start_confirm_timeout_seconds: float = 8.0
     bose_start_poll_interval_seconds: float = 0.5
-    bose_auto_advance_buffer_seconds: float = 1.5
+    bose_auto_advance_buffer_seconds: float = 1.0
     mpv_command: str = "mpv"
     mpv_ipc_path: Path = Path("/tmp/thecakeisapi-mpv.sock")
     config_path: Path | None = field(default=None, repr=False)

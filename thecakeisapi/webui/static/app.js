@@ -314,7 +314,16 @@ async function renderPlaybackResponse(response) {
 
   const playbackState = await response.json();
   lastPlaybackState = playbackState;
+  syncOutputSelector(playbackState);
   renderPlaybackState(playbackState);
+}
+
+function syncOutputSelector(playbackState) {
+  if (!playbackState.active_output || playbackState.state === "stopped") {
+    return;
+  }
+
+  outputSelector.value = playbackState.active_output;
 }
 
 function renderPlaybackState(playbackState) {

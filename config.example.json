@@ -7,7 +7,7 @@
   "soundtouch_cli_command": "soundtouch-cli",
   "bose_start_confirm_timeout_seconds": 8.0,
   "bose_start_poll_interval_seconds": 0.5,
-  "bose_auto_advance_buffer_seconds": 1.5,
+  "bose_auto_advance_buffer_seconds": 1.0,
   "mpv_command": "mpv",
   "mpv_ipc_path": "/tmp/thecakeisapi-mpv.sock"
 }
