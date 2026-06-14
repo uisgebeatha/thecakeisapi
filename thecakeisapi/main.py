@@ -188,7 +188,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 if app.state.bose_playback_state.state == "paused":
                     _resume_bose_playback(app)
                     app.state.active_output = "bose"
-                    app.state.playback_message = "Resumed Bose playback"
+                    app.state.playback_message = "Resumed Bose playback; timer reset"
                     return _playback_status(app)
 
                 current_track = app.state.playback_queue.current()
@@ -570,7 +570,7 @@ def _resume_bose_playback(app: FastAPI) -> None:
         return
 
     app.state.bose_client.resume()
-    app.state.bose_playback_state.resume()
+    app.state.bose_playback_state.resume_from_start()
 
 
 def _stop_bose_if_active(app: FastAPI) -> None:

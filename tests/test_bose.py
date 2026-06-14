@@ -406,6 +406,25 @@ class BosePlaybackStateTests(unittest.TestCase):
         self.assertEqual(state.confirmed_start_timestamp, 116.0)
         self.assertEqual(state.elapsed_seconds(now=122.0), 6.0)
 
+    def test_resume_from_start_resets_untrusted_elapsed_time(self) -> None:
+        state = BosePlaybackState(
+            state="paused",
+            confirmed_start_timestamp=100.0,
+            paused_elapsed_seconds=4.0,
+            duration_seconds=10.0,
+        )
+
+        state.resume_from_start(now=120.0)
+
+        self.assertEqual(state.state, "playing")
+        self.assertEqual(state.confirmed_start_timestamp, 120.0)
+        self.assertIsNone(state.paused_elapsed_seconds)
+        self.assertEqual(state.elapsed_seconds(now=120.5), 0.5)
+        self.assertEqual(
+            state.warning,
+            "Bose resume position could not be verified; timer reset",
+        )
+
     def test_auto_advance_does_not_fire_while_paused(self) -> None:
         state = BosePlaybackState(
             state="paused",
@@ -568,10 +587,11 @@ class BoseAutoAdvanceTests(unittest.TestCase):
             self.assertTrue(app.state.bose_client.resumed)
             self.assertEqual(app.state.bose_playback_state.state, "playing")
             self.assertIsNotNone(paused_elapsed_seconds)
-            self.assertAlmostEqual(
-                app.state.bose_playback_state.elapsed_seconds(),
-                paused_elapsed_seconds,
-                delta=0.2,
+            self.assertLess(app.state.bose_playback_state.elapsed_seconds(), 0.2)
+            self.assertIsNone(app.state.bose_playback_state.paused_elapsed_seconds)
+            self.assertEqual(
+                app.state.bose_playback_state.warning,
+                "Bose resume position could not be verified; timer reset",
             )
 
 

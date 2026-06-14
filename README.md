@@ -78,8 +78,7 @@ Bose SoundTouch
 #### Raspberry Pi Local
 
 * Play
-* Pause
-* Resume
+* Single Pause / Resume control
 * Stop
 * Next
 * Previous
@@ -89,8 +88,7 @@ Bose SoundTouch
 #### Bose SoundTouch
 
 * Play
-* Pause
-* Resume
+* Single Pause / Resume control
 * Stop
 * Next
 * Previous
@@ -103,7 +101,7 @@ Bose controls use `soundtouch-cli`:
 * Resume: `soundtouch-cli --host <bose_speaker_ip> play start`
 * Stop: `soundtouch-cli --host <bose_speaker_ip> play stop`
 
-When Bose playback is paused, the app-side timer and auto-advance countdown pause. Resume continues from the saved elapsed position.
+When Bose playback is paused, the app-side timer and auto-advance countdown pause. If Bose resume position cannot be verified, the app resets the displayed timer on resume instead of showing an untrusted elapsed position.
 
 ## Storage
 
