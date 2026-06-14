@@ -422,8 +422,8 @@ function updateTransportButtons(playbackState) {
   const isPaused = playbackState.state === "paused";
   const isBose = selectedOutput() === "bose";
 
-  playButton.disabled = !hasTrack || isPlaying;
-  pauseButton.disabled = isBose || !isPlaying;
+  playButton.disabled = isBose || !hasTrack || isPlaying;
+  pauseButton.disabled = !hasTrack || (!isPlaying && !isPaused);
   stopButton.disabled = !hasTrack || playbackState.state === "stopped";
   previousButton.disabled = !hasTrack;
   nextButton.disabled = !hasTrack;
@@ -431,6 +431,7 @@ function updateTransportButtons(playbackState) {
   repeatButton.setAttribute("aria-pressed", playbackState.repeat_track ? "true" : "false");
 
   playButton.textContent = isPaused ? "Play" : "Play";
+  pauseButton.textContent = isBose && isPaused ? "Resume" : "Pause";
 }
 
 function selectedOutput() {
@@ -502,7 +503,13 @@ playButton.addEventListener("click", () => {
 });
 
 pauseButton.addEventListener("click", () => {
+  if (selectedOutput() === "bose" && lastPlaybackState?.state === "paused") {
+    sendTransportCommand("/api/player/bose/resume");
+    return;
+  }
+
   if (selectedOutput() === "bose") {
+    sendTransportCommand("/api/player/bose/pause");
     return;
   }
   sendTransportCommand("/api/player/local/pause");

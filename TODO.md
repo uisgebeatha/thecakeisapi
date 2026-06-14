@@ -69,6 +69,9 @@
 - [x] Generate Pi 4 stream URLs from selected library files.
 - [x] Send selected tracks to Bose through `soundtouch-cli source custom-radio`.
 - [x] Stop Bose playback with `soundtouch-cli play stop`.
+- [x] Pause Bose playback with `soundtouch-cli play pause`.
+- [x] Resume Bose playback with `soundtouch-cli play start`.
+- [x] Pause Bose app-side timer and auto-advance countdown while paused.
 - [x] Poll Bose `/now_playing` after starting Bose playback.
 - [x] Track Bose app-side playback state and elapsed time.
 - [x] Estimate Bose queue auto-advance from local duration plus buffer.

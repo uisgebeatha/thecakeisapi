@@ -22,6 +22,8 @@ from thecakeisapi.main import (
     _play_bose_track,
     _play_track,
     _playback_status,
+    _pause_bose_playback,
+    _resume_bose_playback,
     _stop_bose_playback,
     _sync_bose_playback,
     create_app,
@@ -170,6 +172,42 @@ class SoundTouchCliClientTests(unittest.TestCase):
             ],
         )
 
+    def test_build_pause_command_uses_soundtouch_cli_play_pause(self) -> None:
+        command = SoundTouchCliClient(
+            "soundtouch-cli",
+            "192.168.42.101",
+            "http://bose-controller.local",
+        ).build_pause_command()
+
+        self.assertEqual(
+            command,
+            [
+                "soundtouch-cli",
+                "--host",
+                "192.168.42.101",
+                "play",
+                "pause",
+            ],
+        )
+
+    def test_build_resume_command_uses_soundtouch_cli_play_start(self) -> None:
+        command = SoundTouchCliClient(
+            "soundtouch-cli",
+            "192.168.42.101",
+            "http://bose-controller.local",
+        ).build_resume_command()
+
+        self.assertEqual(
+            command,
+            [
+                "soundtouch-cli",
+                "--host",
+                "192.168.42.101",
+                "play",
+                "start",
+            ],
+        )
+
     @patch("thecakeisapi.bose.subprocess.run")
     def test_stop_runs_soundtouch_cli_play_stop(self, run_mock) -> None:
         run_mock.return_value = subprocess.CompletedProcess(
@@ -217,6 +255,64 @@ class SoundTouchCliClientTests(unittest.TestCase):
                 "192.168.42.101",
                 "http://bose-controller.local",
             ).stop()
+
+    @patch("thecakeisapi.bose.subprocess.run")
+    def test_pause_runs_soundtouch_cli_play_pause(self, run_mock) -> None:
+        run_mock.return_value = subprocess.CompletedProcess(
+            args=[],
+            returncode=0,
+            stdout="",
+            stderr="",
+        )
+
+        SoundTouchCliClient(
+            "soundtouch-cli",
+            "192.168.42.101",
+            "http://bose-controller.local",
+        ).pause()
+
+        run_mock.assert_called_once_with(
+            [
+                "soundtouch-cli",
+                "--host",
+                "192.168.42.101",
+                "play",
+                "pause",
+            ],
+            capture_output=True,
+            check=False,
+            text=True,
+            timeout=15,
+        )
+
+    @patch("thecakeisapi.bose.subprocess.run")
+    def test_resume_runs_soundtouch_cli_play_start(self, run_mock) -> None:
+        run_mock.return_value = subprocess.CompletedProcess(
+            args=[],
+            returncode=0,
+            stdout="",
+            stderr="",
+        )
+
+        SoundTouchCliClient(
+            "soundtouch-cli",
+            "192.168.42.101",
+            "http://bose-controller.local",
+        ).resume()
+
+        run_mock.assert_called_once_with(
+            [
+                "soundtouch-cli",
+                "--host",
+                "192.168.42.101",
+                "play",
+                "start",
+            ],
+            capture_output=True,
+            check=False,
+            text=True,
+            timeout=15,
+        )
 
 
 class BoseNowPlayingTests(unittest.TestCase):
@@ -284,6 +380,42 @@ class BosePlaybackStateTests(unittest.TestCase):
         self.assertIsNone(state.confirmed_start_timestamp)
         self.assertIsNone(state.elapsed_seconds(now=120.0))
 
+    def test_pause_freezes_elapsed_time(self) -> None:
+        state = BosePlaybackState(
+            state="playing",
+            confirmed_start_timestamp=100.0,
+            duration_seconds=10.0,
+        )
+
+        state.pause(now=104.0)
+
+        self.assertEqual(state.state, "paused")
+        self.assertEqual(state.elapsed_seconds(now=120.0), 4.0)
+
+    def test_resume_continues_from_paused_elapsed_time(self) -> None:
+        state = BosePlaybackState(
+            state="paused",
+            confirmed_start_timestamp=100.0,
+            paused_elapsed_seconds=4.0,
+            duration_seconds=10.0,
+        )
+
+        state.resume(now=120.0)
+
+        self.assertEqual(state.state, "playing")
+        self.assertEqual(state.confirmed_start_timestamp, 116.0)
+        self.assertEqual(state.elapsed_seconds(now=122.0), 6.0)
+
+    def test_auto_advance_does_not_fire_while_paused(self) -> None:
+        state = BosePlaybackState(
+            state="paused",
+            confirmed_start_timestamp=100.0,
+            paused_elapsed_seconds=20.0,
+            duration_seconds=10.0,
+        )
+
+        self.assertFalse(state.should_auto_advance(buffer_seconds=1.0, now=130.0))
+
 
 class PlaybackCleanupTests(unittest.TestCase):
     def test_default_bose_auto_advance_buffer_is_one_second(self) -> None:
@@ -310,6 +442,29 @@ class PlaybackCleanupTests(unittest.TestCase):
             self.assertEqual(status["state"], "playing")
             self.assertEqual(status["now_playing"]["path"], "first.mp3")
             self.assertGreaterEqual(status["elapsed_seconds"], 2.0)
+
+    def test_bose_paused_status_survives_refresh_equivalent_status_read(self) -> None:
+        with temp_music_app() as app:
+            app.state.playback_queue.set_tracks(
+                [QueueTrack(path="first.mp3", name="first.mp3")],
+                "first.mp3",
+            )
+            app.state.active_output = "bose"
+            app.state.bose_playback_state = BosePlaybackState(
+                track_path="first.mp3",
+                track_name="first.mp3",
+                state="paused",
+                confirmed_start_timestamp=time.time() - 10,
+                paused_elapsed_seconds=3.0,
+                duration_seconds=10.0,
+            )
+
+            status = _playback_status(app)
+
+            self.assertEqual(status["active_output"], "bose")
+            self.assertEqual(status["state"], "paused")
+            self.assertTrue(status["paused"])
+            self.assertEqual(status["elapsed_seconds"], 3.0)
 
     def test_starting_bose_stops_local_playback_first(self) -> None:
         with temp_music_app() as app:
@@ -397,6 +552,28 @@ class BoseAutoAdvanceTests(unittest.TestCase):
             self.assertEqual(app.state.bose_playback_state.state, "stopped")
             self.assertIsNone(app.state.bose_playback_state.confirmed_start_timestamp)
 
+    def test_bose_pause_and_resume_update_timer_state(self) -> None:
+        with temp_music_app() as app:
+            app.state.bose_playback_state = BosePlaybackState(
+                state="playing",
+                confirmed_start_timestamp=time.time() - 3,
+                duration_seconds=10.0,
+            )
+
+            _pause_bose_playback(app)
+            paused_elapsed_seconds = app.state.bose_playback_state.paused_elapsed_seconds
+            _resume_bose_playback(app)
+
+            self.assertTrue(app.state.bose_client.paused)
+            self.assertTrue(app.state.bose_client.resumed)
+            self.assertEqual(app.state.bose_playback_state.state, "playing")
+            self.assertIsNotNone(paused_elapsed_seconds)
+            self.assertAlmostEqual(
+                app.state.bose_playback_state.elapsed_seconds(),
+                paused_elapsed_seconds,
+                delta=0.2,
+            )
+
 
 class FakeNowPlayingClient(BoseNowPlayingClient):
     def __init__(self, raw_statuses: list[str]) -> None:
@@ -412,6 +589,8 @@ class FakeBoseClient:
     def __init__(self) -> None:
         self.played_names: list[str] = []
         self.stopped = False
+        self.paused = False
+        self.resumed = False
 
     def play_stream(self, name: str, stream_url: str) -> BosePlaybackRequest:
         self.played_names.append(name)
@@ -419,6 +598,12 @@ class FakeBoseClient:
 
     def stop(self) -> None:
         self.stopped = True
+
+    def pause(self) -> None:
+        self.paused = True
+
+    def resume(self) -> None:
+        self.resumed = True
 
 
 class FakeLocalPlayer:

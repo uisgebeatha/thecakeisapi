@@ -89,11 +89,21 @@ Bose SoundTouch
 #### Bose SoundTouch
 
 * Play
+* Pause
+* Resume
 * Stop
 * Next
 * Previous
 * Queue auto-advance
 * Playback progress estimation
+
+Bose controls use `soundtouch-cli`:
+
+* Pause: `soundtouch-cli --host <bose_speaker_ip> play pause`
+* Resume: `soundtouch-cli --host <bose_speaker_ip> play start`
+* Stop: `soundtouch-cli --host <bose_speaker_ip> play stop`
+
+When Bose playback is paused, the app-side timer and auto-advance countdown pause. Resume continues from the saved elapsed position.
 
 ## Storage
 
@@ -146,6 +156,7 @@ Working:
 * Queue management
 * Local playback
 * Bose playback
+* Bose pause/resume
 * Auto-advance
 * Repeat mode
 * USB SSD music library

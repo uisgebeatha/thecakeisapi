@@ -52,14 +52,19 @@ class BosePlaybackState:
     state: str = "stopped"
     start_timestamp: float | None = None
     confirmed_start_timestamp: float | None = None
+    paused_elapsed_seconds: float | None = None
     duration_seconds: float | None = None
     stream_url: str | None = None
     command: list[str] | None = None
     warning: str | None = None
 
     def elapsed_seconds(self, now: float | None = None) -> float | None:
+        if self.state == "paused":
+            return self.paused_elapsed_seconds
+
         if self.confirmed_start_timestamp is None:
             return None
+
         current_time = time.time() if now is None else now
         return max(0.0, current_time - self.confirmed_start_timestamp)
 
@@ -76,7 +81,25 @@ class BosePlaybackState:
     def stop(self) -> None:
         self.state = "stopped"
         self.confirmed_start_timestamp = None
+        self.paused_elapsed_seconds = None
         self.warning = None
+
+    def pause(self, now: float | None = None) -> None:
+        if self.state != "playing":
+            return
+
+        self.paused_elapsed_seconds = self.elapsed_seconds(now)
+        self.state = "paused"
+
+    def resume(self, now: float | None = None) -> None:
+        if self.state != "paused":
+            return
+
+        current_time = time.time() if now is None else now
+        elapsed_seconds = self.paused_elapsed_seconds or 0.0
+        self.confirmed_start_timestamp = current_time - elapsed_seconds
+        self.paused_elapsed_seconds = None
+        self.state = "playing"
 
     def ended(self) -> None:
         self.state = "ended"
@@ -154,6 +177,24 @@ class SoundTouchCliClient:
             "stop",
         ]
 
+    def build_pause_command(self) -> list[str]:
+        return self._build_play_command("pause")
+
+    def build_resume_command(self) -> list[str]:
+        return self._build_play_command("start")
+
+    def build_now_command(self) -> list[str]:
+        return self._build_play_command("now")
+
+    def _build_play_command(self, action: str) -> list[str]:
+        return [
+            self.command,
+            "--host",
+            self.speaker_ip,
+            "play",
+            action,
+        ]
+
     def play_stream(self, name: str, stream_url: str) -> BosePlaybackRequest:
         command = self.build_custom_radio_command(name, stream_url)
         self._run_command(command, "playback")
@@ -166,7 +207,16 @@ class SoundTouchCliClient:
     def stop(self) -> None:
         self._run_command(self.build_stop_command(), "stop")
 
-    def _run_command(self, command: list[str], action: str) -> None:
+    def pause(self) -> None:
+        self._run_command(self.build_pause_command(), "pause")
+
+    def resume(self) -> None:
+        self._run_command(self.build_resume_command(), "resume")
+
+    def now(self) -> str:
+        return self._run_command(self.build_now_command(), "now")
+
+    def _run_command(self, command: list[str], action: str) -> str:
         try:
             completed_process = subprocess.run(
                 command,
@@ -189,6 +239,8 @@ class SoundTouchCliClient:
             if not error_output:
                 error_output = f"exit code {completed_process.returncode}"
             raise BosePlaybackError(f"soundtouch-cli {action} failed: {error_output}")
+
+        return completed_process.stdout.strip()
 
 
 class BoseNowPlayingClient:

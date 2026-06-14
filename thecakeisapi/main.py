@@ -185,6 +185,12 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     def replay_current_bose_file() -> dict[str, object]:
         try:
             with app.state.playback_lock:
+                if app.state.bose_playback_state.state == "paused":
+                    _resume_bose_playback(app)
+                    app.state.active_output = "bose"
+                    app.state.playback_message = "Resumed Bose playback"
+                    return _playback_status(app)
+
                 current_track = app.state.playback_queue.current()
                 if current_track is None:
                     app.state.playback_message = "No track is selected"
@@ -199,6 +205,17 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             raise HTTPException(status_code=404, detail=str(error)) from error
         except UnsupportedAudioFileError as error:
             raise HTTPException(status_code=415, detail=str(error)) from error
+        except BosePlaybackError as error:
+            raise HTTPException(status_code=503, detail=str(error)) from error
+
+    @app.post("/api/player/bose/pause")
+    def pause_bose_playback() -> dict[str, object]:
+        try:
+            with app.state.playback_lock:
+                _pause_bose_playback(app)
+                app.state.active_output = "bose"
+                app.state.playback_message = "Paused Bose playback"
+                return _playback_status(app)
         except BosePlaybackError as error:
             raise HTTPException(status_code=503, detail=str(error)) from error
 
@@ -505,6 +522,7 @@ def _play_bose_track(app: FastAPI, track: QueueTrack) -> None:
         track_name=track.name,
         state="starting",
         start_timestamp=_current_timestamp(),
+        paused_elapsed_seconds=None,
         duration_seconds=duration_seconds,
         stream_url=stream_url,
     )
@@ -531,6 +549,28 @@ def _stop_bose_playback(app: FastAPI) -> None:
 
     app.state.bose_client.stop()
     app.state.bose_playback_state.stop()
+
+
+def _pause_bose_playback(app: FastAPI) -> None:
+    if app.state.bose_client is None:
+        raise BosePlaybackError("bose_speaker_ip is not configured")
+
+    if app.state.bose_playback_state.state != "playing":
+        return
+
+    app.state.bose_client.pause()
+    app.state.bose_playback_state.pause()
+
+
+def _resume_bose_playback(app: FastAPI) -> None:
+    if app.state.bose_client is None:
+        raise BosePlaybackError("bose_speaker_ip is not configured")
+
+    if app.state.bose_playback_state.state != "paused":
+        return
+
+    app.state.bose_client.resume()
+    app.state.bose_playback_state.resume()
 
 
 def _stop_bose_if_active(app: FastAPI) -> None:
@@ -655,6 +695,7 @@ def _playback_status(app: FastAPI) -> dict[str, object]:
             "confirmed_start_timestamp": (
                 app.state.bose_playback_state.confirmed_start_timestamp
             ),
+            "paused_elapsed_seconds": app.state.bose_playback_state.paused_elapsed_seconds,
             "elapsed_seconds": app.state.bose_playback_state.elapsed_seconds(),
             "duration_seconds": app.state.bose_playback_state.duration_seconds,
             "stream_url": app.state.bose_playback_state.stream_url,
@@ -672,7 +713,7 @@ def _active_player_status(app: FastAPI) -> dict[str, object]:
             "process_id": None,
             "elapsed_seconds": app.state.bose_playback_state.elapsed_seconds(),
             "duration_seconds": app.state.bose_playback_state.duration_seconds,
-            "paused": False,
+            "paused": app.state.bose_playback_state.state == "paused",
         }
 
     return app.state.local_player.status()
