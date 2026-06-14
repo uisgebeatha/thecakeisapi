@@ -105,3 +105,8 @@
 - Consider album artwork support.
 - Consider volume control.
 - Consider shuffle mode.
+
+Improve output switching UX:
+- Current selector may jump back to the active output.
+- This is technically correct but visually confusing.
+- Consider replacing selector with explicit “Play on Pi 4” / “Play on Bose” actions or an “active output” display.
