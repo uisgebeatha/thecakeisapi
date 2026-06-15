@@ -119,3 +119,10 @@ Improve output switching UX:
 - Current selector may jump back to the active output.
 - This is technically correct but visually confusing.
 - Consider replacing selector with explicit “Play on Pi 4” / “Play on Bose” actions or an “active output” display.
+
+## Design Investigation
+
+Future Investigation:
+- Evaluate DLNA/UPnP playback path for Bose SoundTouch.
+- Determine whether DLNA playback supports true pause/resume and seek.
+- Compare DLNA behaviour against current custom-radio implementation.
