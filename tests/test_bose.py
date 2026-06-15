@@ -422,7 +422,7 @@ class BosePlaybackStateTests(unittest.TestCase):
         self.assertEqual(state.elapsed_seconds(now=120.5), 0.5)
         self.assertEqual(
             state.warning,
-            "Bose resume position could not be verified; timer reset",
+            "Bose resume restarts playback; timer reset",
         )
 
     def test_auto_advance_does_not_fire_while_paused(self) -> None:
@@ -559,6 +559,11 @@ class BoseAutoAdvanceTests(unittest.TestCase):
 
     def test_bose_stop_cancels_timer_state(self) -> None:
         with temp_music_app() as app:
+            app.state.playback_queue.set_tracks(
+                [QueueTrack(path="first.mp3", name="first.mp3")],
+                "first.mp3",
+            )
+            app.state.active_output = "bose"
             app.state.bose_playback_state = BosePlaybackState(
                 state="playing",
                 confirmed_start_timestamp=time.time() - 4,
@@ -570,6 +575,10 @@ class BoseAutoAdvanceTests(unittest.TestCase):
             self.assertTrue(app.state.bose_client.stopped)
             self.assertEqual(app.state.bose_playback_state.state, "stopped")
             self.assertIsNone(app.state.bose_playback_state.confirmed_start_timestamp)
+            status = _playback_status(app)
+            self.assertEqual(status["state"], "stopped")
+            self.assertEqual(len(status["queue"]), 1)
+            self.assertEqual(status["now_playing"]["path"], "first.mp3")
 
     def test_bose_pause_and_resume_update_timer_state(self) -> None:
         with temp_music_app() as app:
@@ -591,8 +600,55 @@ class BoseAutoAdvanceTests(unittest.TestCase):
             self.assertIsNone(app.state.bose_playback_state.paused_elapsed_seconds)
             self.assertEqual(
                 app.state.bose_playback_state.warning,
-                "Bose resume position could not be verified; timer reset",
+                "Bose resume restarts playback; timer reset",
             )
+
+    def test_bose_resume_after_refresh_equivalent_pause_resets_stale_elapsed_time(self) -> None:
+        with temp_music_app() as app:
+            app.state.playback_queue.set_tracks(
+                [QueueTrack(path="first.mp3", name="first.mp3")],
+                "first.mp3",
+            )
+            app.state.active_output = "bose"
+            app.state.bose_playback_state = BosePlaybackState(
+                track_path="first.mp3",
+                track_name="first.mp3",
+                state="paused",
+                confirmed_start_timestamp=time.time() - 90,
+                paused_elapsed_seconds=45.0,
+                duration_seconds=120.0,
+            )
+
+            _resume_bose_playback(app)
+
+            status = _playback_status(app)
+            self.assertEqual(status["state"], "playing")
+            self.assertLess(status["elapsed_seconds"], 0.2)
+            self.assertIsNone(status["bose"]["paused_elapsed_seconds"])
+            self.assertEqual(
+                status["bose"]["warning"],
+                "Bose resume restarts playback; timer reset",
+            )
+
+    def test_bose_playback_can_start_again_after_stop(self) -> None:
+        with temp_music_app() as app:
+            app.state.playback_queue.set_tracks(
+                [QueueTrack(path="first.mp3", name="first.mp3")],
+                "first.mp3",
+            )
+            app.state.active_output = "bose"
+            app.state.bose_playback_state = BosePlaybackState(
+                state="playing",
+                confirmed_start_timestamp=time.time() - 4,
+                duration_seconds=1.0,
+            )
+
+            _stop_bose_playback(app)
+            _play_bose_track(app, QueueTrack(path="first.mp3", name="first.mp3"))
+
+            self.assertTrue(app.state.bose_client.stopped)
+            self.assertEqual(app.state.bose_client.played_names, ["first.mp3"])
+            self.assertEqual(app.state.bose_playback_state.state, "playing")
 
 
 class FakeNowPlayingClient(BoseNowPlayingClient):

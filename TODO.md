@@ -73,6 +73,7 @@
 - [x] Resume Bose playback with `soundtouch-cli play start`.
 - [x] Pause Bose app-side timer and auto-advance countdown while paused.
 - [x] Reset Bose app-side timer on resume when position continuity cannot be verified.
+- [x] Treat Bose resume as restart until true resume support is discovered.
 - [x] Poll Bose `/now_playing` after starting Bose playback.
 - [x] Track Bose app-side playback state and elapsed time.
 - [x] Estimate Bose queue auto-advance from local duration plus buffer.
@@ -91,10 +92,12 @@
 - [x] Keep Bose Stop available after browser refresh while Bose playback is active.
 - [x] Use a single Pause/Resume button for Pi 4 local playback.
 - [x] Keep Pause/Resume button state consistent after browser refresh.
+- [x] Keep queue available after Bose Stop.
 - [x] Stop Pi 4 local mpv playback before starting Bose playback.
 - [x] Stop Bose playback before starting Pi 4 local playback.
 - [x] Lower default Bose auto-advance buffer to 1 second.
 - [x] Hide common filesystem metadata folders from library browsing.
+- [ ] Detect external Bose state changes or power-off using periodic `now_playing` polling.
 
 ## Milestone 5 – NAS Storage
 

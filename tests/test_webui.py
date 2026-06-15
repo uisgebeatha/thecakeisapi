@@ -11,7 +11,11 @@ class WebUiTransportTests(unittest.TestCase):
 
         self.assertIn('pauseButton.textContent = isPaused ? "Resume" : "Pause";', app_js)
         self.assertIn(
-            "playButton.disabled = isBose || !hasTrack || isPlaying || isPaused;",
+            'return playbackState?.state === "paused" || playbackState?.paused === true;',
+            app_js,
+        )
+        self.assertIn(
+            "playButton.disabled = !hasTrack || isPlaying || isPaused;",
             app_js,
         )
 
@@ -22,6 +26,15 @@ class WebUiTransportTests(unittest.TestCase):
         self.assertIn('sendTransportCommand("/api/player/local/resume");', app_js)
         self.assertIn('sendTransportCommand("/api/player/bose/pause");', app_js)
         self.assertIn('sendTransportCommand("/api/player/local/pause");', app_js)
+
+    def test_play_button_is_available_for_stopped_bose_queue_item(self) -> None:
+        app_js = APP_JS.read_text(encoding="utf-8")
+
+        self.assertNotIn(
+            "playButton.disabled = isBose || !hasTrack || isPlaying || isPaused;",
+            app_js,
+        )
+        self.assertIn("sendTransportCommand(transportEndpoint(\"resume\"));", app_js)
 
 
 if __name__ == "__main__":

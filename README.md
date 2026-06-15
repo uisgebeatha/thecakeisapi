@@ -98,10 +98,10 @@ Bose SoundTouch
 Bose controls use `soundtouch-cli`:
 
 * Pause: `soundtouch-cli --host <bose_speaker_ip> play pause`
-* Resume: `soundtouch-cli --host <bose_speaker_ip> play start`
+* Resume / restart: `soundtouch-cli --host <bose_speaker_ip> play start`
 * Stop: `soundtouch-cli --host <bose_speaker_ip> play stop`
 
-When Bose playback is paused, the app-side timer and auto-advance countdown pause. If Bose resume position cannot be verified, the app resets the displayed timer on resume instead of showing an untrusted elapsed position.
+When Bose playback is paused, the app-side timer and auto-advance countdown pause. Current Bose resume behavior restarts the stream from the beginning, so the app resets the displayed timer on resume/restart instead of showing stale progress.
 
 ## Storage
 

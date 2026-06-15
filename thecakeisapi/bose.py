@@ -109,7 +109,7 @@ class BosePlaybackState:
         self.confirmed_start_timestamp = current_time
         self.paused_elapsed_seconds = None
         self.state = "playing"
-        self.warning = "Bose resume position could not be verified; timer reset"
+        self.warning = "Bose resume restarts playback; timer reset"
 
     def ended(self) -> None:
         self.state = "ended"
