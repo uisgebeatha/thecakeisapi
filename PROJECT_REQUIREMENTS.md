@@ -55,3 +55,24 @@ Build a minimal proof of concept:
 - Playlists will be temporary queues only for the first version.
 - SMB will be used for NAS sharing.
 - The app should support switching output between Pi audio and Bose without rebuilding the queue.
+
+## Engineering Note - Bose Pause/Resume
+
+Date: 2026-06-16
+
+Testing performed directly using soundtouch-cli.
+
+Results:
+- play pause changes playback state to Stopped.
+- play start causes Bose to request the media URL again.
+- Bose reconnects to the Pi 4 stream.
+- Playback restarts from the beginning.
+
+Evidence:
+- Repeated GET requests observed for the same media file after play start.
+- Behaviour reproduced outside TheCakeIsAPI using soundtouch-cli.
+
+Conclusion:
+- Limitation appears to be in SoundTouch custom-radio / LOCAL_INTERNET_RADIO playback.
+- Not caused by TheCakeIsAPI.
+- Bose Resume is implemented as Restart.

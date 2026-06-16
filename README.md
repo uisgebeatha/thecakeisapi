@@ -146,6 +146,95 @@ Access from browser:
 
 http://<pi-address>:8000
 
+## systemd Service
+
+For normal Pi 4 boot startup, run TheCakeIsAPI as a systemd service.
+
+Recommended project path:
+
+/home/controller/thecakeisapi
+
+Recommended virtual environment:
+
+/home/controller/thecakeisapi/venv
+
+Recommended unit file:
+
+```ini
+[Unit]
+Description=TheCakeIsAPI music player
+Wants=network-online.target
+After=network-online.target
+RequiresMountsFor=/mnt/music
+
+[Service]
+Type=simple
+User=controller
+WorkingDirectory=/home/controller/thecakeisapi
+Environment=PYTHONUNBUFFERED=1
+ExecStart=/home/controller/thecakeisapi/venv/bin/uvicorn thecakeisapi.main:app --host 0.0.0.0 --port 8000
+Restart=on-failure
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target
+```
+
+The same template is available at:
+
+deploy/thecakeisapi.service
+
+Create or update the service file on the Pi:
+
+```bash
+sudo cp deploy/thecakeisapi.service /etc/systemd/system/thecakeisapi.service
+```
+
+Reload systemd:
+
+```bash
+sudo systemctl daemon-reload
+```
+
+Enable boot startup:
+
+```bash
+sudo systemctl enable thecakeisapi.service
+```
+
+Start the service:
+
+```bash
+sudo systemctl start thecakeisapi.service
+```
+
+Check service status:
+
+```bash
+systemctl status thecakeisapi.service
+```
+
+View logs:
+
+```bash
+journalctl -u thecakeisapi.service -f
+```
+
+Restart after configuration or code changes:
+
+```bash
+sudo systemctl restart thecakeisapi.service
+```
+
+Stop the service:
+
+```bash
+sudo systemctl stop thecakeisapi.service
+```
+
+The service expects `config.json` to exist locally in `/home/controller/thecakeisapi`.
+That file should remain uncommitted. The `controller` user must be able to read `/mnt/music`, run `mpv`, and run `soundtouch-cli`.
+
 ## Current Status
 
 Working:
@@ -179,3 +268,11 @@ In Progress:
 
 Personal project.
 License to be decided.
+
+## Known Limitations
+
+Bose custom-radio playback does not support true pause/resume.
+
+When paused and restarted, the Bose SoundTouch speaker reconnects to the stream and playback restarts from the beginning.
+
+TheCakeIsAPI therefore treats Bose Resume as Restart and resets the playback timer accordingly.

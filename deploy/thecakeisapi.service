@@ -1,0 +1,17 @@
+[Unit]
+Description=TheCakeIsAPI music player
+Wants=network-online.target
+After=network-online.target
+RequiresMountsFor=/mnt/music
+
+[Service]
+Type=simple
+User=controller
+WorkingDirectory=/home/controller/thecakeisapi
+Environment=PYTHONUNBUFFERED=1
+ExecStart=/home/controller/thecakeisapi/venv/bin/uvicorn thecakeisapi.main:app --host 0.0.0.0 --port 8000
+Restart=on-failure
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target

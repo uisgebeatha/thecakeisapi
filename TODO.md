@@ -99,7 +99,17 @@
 - [x] Hide common filesystem metadata folders from library browsing.
 - [ ] Detect external Bose state changes or power-off using periodic `now_playing` polling.
 
-## Milestone 5 – NAS Storage
+## Milestone 5 Deployment
+
+- [x] Add recommended systemd service template for TheCakeIsAPI.
+- [x] Document boot startup with `systemctl enable`.
+- [x] Document automatic restart on service failure.
+- [x] Document service management commands.
+- [ ] Verify mpv local playback works under systemd.
+- [ ] Verify Bose playback works under systemd.
+
+
+## Milestone 6 – NAS Storage
 
 - USB SSD attached to Pi.
 - SMB share.
@@ -126,3 +136,16 @@ Future Investigation:
 - Evaluate DLNA/UPnP playback path for Bose SoundTouch.
 - Determine whether DLNA playback supports true pause/resume and seek.
 - Compare DLNA behaviour against current custom-radio implementation.
+
+## Configuration Improvements
+
+- Make AfterTouch service location clearly configurable.
+  - Support Pi Zero AfterTouch.
+  - Support Pi 4 Docker AfterTouch.
+  - Document required `aftertouch_base_url` behavior.
+  - Note that the Bose speaker must be able to reach/resolve this URL.
+
+- Make `soundtouch-cli` location/command clearly configurable.
+  - Support system-installed `soundtouch-cli`.
+  - Support custom path if needed.
+  - Document `soundtouch_cli_command` in README.
