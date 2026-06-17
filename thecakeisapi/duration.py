@@ -1,3 +1,5 @@
+import json
+import subprocess
 from pathlib import Path
 
 
@@ -44,6 +46,50 @@ MP3_SAMPLE_RATES = {
 
 
 def audio_duration_seconds(path: Path) -> float | None:
+    ffprobe_duration = _ffprobe_duration_seconds(path)
+    if ffprobe_duration is not None:
+        return ffprobe_duration
+
+    return _estimated_duration_seconds(path)
+
+
+def _ffprobe_duration_seconds(path: Path) -> float | None:
+    try:
+        completed_process = subprocess.run(
+            [
+                "ffprobe",
+                "-v",
+                "error",
+                "-show_entries",
+                "format=duration",
+                "-of",
+                "json",
+                str(path),
+            ],
+            capture_output=True,
+            check=False,
+            text=True,
+            timeout=10,
+        )
+    except (FileNotFoundError, OSError, subprocess.TimeoutExpired):
+        return None
+
+    if completed_process.returncode != 0:
+        return None
+
+    try:
+        duration_value = json.loads(completed_process.stdout).get("format", {}).get("duration")
+        duration_seconds = float(duration_value)
+    except (TypeError, ValueError, json.JSONDecodeError):
+        return None
+
+    if duration_seconds <= 0:
+        return None
+
+    return duration_seconds
+
+
+def _estimated_duration_seconds(path: Path) -> float | None:
     suffix = path.suffix.casefold()
     if suffix == ".flac":
         return _flac_duration_seconds(path)

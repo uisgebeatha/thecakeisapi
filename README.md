@@ -235,6 +235,14 @@ sudo systemctl stop thecakeisapi.service
 The service expects `config.json` to exist locally in `/home/controller/thecakeisapi`.
 That file should remain uncommitted. The `controller` user must be able to read `/mnt/music`, run `mpv`, and run `soundtouch-cli`.
 
+For accurate track duration detection, install `ffmpeg` so `ffprobe` is available:
+
+```bash
+sudo apt install ffmpeg
+```
+
+TheCakeIsAPI uses `ffprobe` when available for MP3 and FLAC duration detection. If `ffprobe` is missing or fails, the app falls back to its built-in duration estimator. Accurate duration detection is recommended for Bose playback because Bose queue auto-advance uses the local track duration plus a small buffer.
+
 ## Current Status
 
 Working:

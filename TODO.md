@@ -77,6 +77,7 @@
 - [x] Poll Bose `/now_playing` after starting Bose playback.
 - [x] Track Bose app-side playback state and elapsed time.
 - [x] Estimate Bose queue auto-advance from local duration plus buffer.
+- [x] Use `ffprobe` when available for accurate MP3/FLAC duration detection.
 - [x] Respect Repeat Track for Bose estimated auto-advance.
 - [x] Add output selector:
   - [x] Local Pi
@@ -105,6 +106,7 @@
 - [x] Document boot startup with `systemctl enable`.
 - [x] Document automatic restart on service failure.
 - [x] Document service management commands.
+- [x] Document `ffmpeg` / `ffprobe` recommendation for accurate Bose auto-advance timing.
 - [ ] Verify mpv local playback works under systemd.
 - [ ] Verify Bose playback works under systemd.
 
