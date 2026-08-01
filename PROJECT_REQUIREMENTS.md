@@ -28,7 +28,7 @@ The app should manage a local music library stored on directly attached USB stor
 - Backend: FastAPI
 - Frontend: simple HTML/CSS/JavaScript
 - Local playback backend: mpv using IPC control
-- Bose playback backend: AfterTouch / Bose local API
+- Bose playback backend: `soundtouch-cli` controlling the Bose local API, with AfterTouch providing custom-radio playback URLs
 - Music index: SQLite
 - Music root path: configurable, default `/mnt/music`
 
@@ -56,6 +56,17 @@ Build a minimal proof of concept:
 - SMB will be used for NAS sharing.
 - The app should support switching output between Pi audio and Bose without rebuilding the queue.
 
+## Current Deployment Decisions
+
+- TheCakeIsAPI runs as a systemd service on the Pi 4.
+- The project Python virtual environment is used in production.
+- Music is stored on a USB SSD mounted at `/mnt/music`.
+- `/mnt/music` is shared over SMB for Windows and Android LAN access.
+- AfterTouch currently runs in Docker on the Pi 4 at port 8001.
+- `soundtouch-cli` is installed directly on the Pi 4.
+- AfterTouch location remains configurable so a Pi Zero or another LAN host can also be used.
+- The default playback output should become Bose SoundTouch in a future revision.
+
 ## Engineering Note - Bose Pause/Resume
 
 Date: 2026-06-16
@@ -76,3 +87,20 @@ Conclusion:
 - Limitation appears to be in SoundTouch custom-radio / LOCAL_INTERNET_RADIO playback.
 - Not caused by TheCakeIsAPI.
 - Bose Resume is implemented as Restart.
+
+## Future Engineering Investigation – Native UPnP / DLNA Playback
+
+AfterTouch releases after v0.113 expanded UPnP, DLNA, LOCAL_MUSIC, and STORED_MUSIC support.
+
+A future investigation should determine whether native Bose music-library playback can replace or supplement the current custom-radio method.
+
+The investigation should compare:
+
+- native queue and automatic track advancement
+- track duration and position reporting
+- pause/resume
+- seek
+- next/previous
+- reliability and startup delay
+
+The current custom-radio backend must remain available until the alternative has been proven.

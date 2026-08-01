@@ -107,10 +107,17 @@ Future output backends may be added later.
 Assume:
 
 * Single Bose speaker
-* Fixed IP address
+* Fixed speaker IP address
 * Local network operation
+* AfterTouch location and port are configurable
+* `soundtouch-cli` location is configurable
+* Current production deployment uses AfterTouch in Docker on the Pi 4
 
 Do not depend on Bose cloud services.
+
+Keep custom-radio playback as the stable Bose backend until any UPnP/DLNA replacement has been tested independently.
+
+---
 
 ---
 
@@ -141,3 +148,13 @@ When making significant changes:
 * Avoid premature optimisation.
 * Avoid unnecessary abstraction.
 * Prefer standard Python tooling.
+
+---
+
+## Deployment and Upgrade Instructions
+
+When providing deployment or upgrade instructions:
+
+* Verify release asset names, URLs, checksums, and the installation method before presenting commands.
+* Base commands on the user's actual installation rather than a generic deployment.
+* Prefer one complete, verified procedure over iterative trial-and-error instructions.

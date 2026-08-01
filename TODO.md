@@ -107,25 +107,28 @@
 - [x] Document automatic restart on service failure.
 - [x] Document service management commands.
 - [x] Document `ffmpeg` / `ffprobe` recommendation for accurate Bose auto-advance timing.
-- [ ] Verify mpv local playback works under systemd.
-- [ ] Verify Bose playback works under systemd.
+- [x] Verify mpv local playback works under systemd.
+- [x] Verify Bose playback works under systemd.
 
 
 ## Milestone 6 – NAS Storage
 
-- USB SSD attached to Pi.
-- SMB share.
-- Music library scanning.
-- Automatic rescan.
-- Disk usage reporting.
+- [x] Attach USB SSD to Pi 4.
+- [x] Mount music storage at `/mnt/music`.
+- [x] Create SMB share for Windows and Android LAN access.
+- [ ] Document SMB installation, permissions, and client connection.
+- [ ] Add disk usage reporting.
+- [ ] Decide whether music library scanning is needed.
+- [ ] Decide whether automatic rescan is needed.
 
 ## Minor Improvements
 
-- Improve VLC-style UI layout.
-- Better mobile layout.
-- Consider album artwork support.
-- Consider volume control.
-- Consider shuffle mode.
+- [ ] Make Bose SoundTouch the default playback output.
+- [ ] Improve VLC-style UI layout.
+- [ ] Better mobile layout.
+- [ ] Consider album artwork support.
+- [ ] Consider volume control.
+- [ ] Consider shuffle mode.
 
 Improve output switching UX:
 - Current selector may jump back to the active output.
@@ -134,20 +137,28 @@ Improve output switching UX:
 
 ## Design Investigation
 
-Future Investigation:
-- Evaluate DLNA/UPnP playback path for Bose SoundTouch.
-- Determine whether DLNA playback supports true pause/resume and seek.
-- Compare DLNA behaviour against current custom-radio implementation.
+### Native Bose UPnP / DLNA Playback
+
+- [ ] Review AfterTouch v0.116–v0.120 UPnP and STORED_MUSIC support.
+- [ ] Set up a test DLNA server using the existing `/mnt/music` library.
+- [ ] Test native Bose queue handling.
+- [ ] Test automatic next-track playback.
+- [ ] Test pause/resume behaviour.
+- [ ] Test seek and track-position reporting.
+- [ ] Compare startup delay and reliability with custom-radio playback.
+- [ ] Keep the current custom-radio backend available during evaluation.
 
 ## Configuration Improvements
 
-- Make AfterTouch service location clearly configurable.
-  - Support Pi Zero AfterTouch.
-  - Support Pi 4 Docker AfterTouch.
-  - Document required `aftertouch_base_url` behavior.
-  - Note that the Bose speaker must be able to reach/resolve this URL.
+- [x] Make AfterTouch service location configurable through `aftertouch_base_url`.
+  - [x] Support Pi Zero AfterTouch.
+  - [x] Support Pi 4 Docker AfterTouch.
+  - [ ] Fully document address, port, and Bose reachability requirements.
 
-- Make `soundtouch-cli` location/command clearly configurable.
-  - Support system-installed `soundtouch-cli`.
-  - Support custom path if needed.
-  - Document `soundtouch_cli_command` in README.
+- [x] Make `soundtouch-cli` command/location configurable through `soundtouch_cli_command`.
+  - [x] Support a system-installed command.
+  - [x] Support a full custom executable path.
+  - [ ] Fully document configuration examples.
+
+- [ ] Consider a future settings UI for editing these values.
+- [ ] Display TheCakeIsAPI, AfterTouch, and `soundtouch-cli` versions in the UI.
