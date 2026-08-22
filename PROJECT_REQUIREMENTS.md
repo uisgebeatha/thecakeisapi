@@ -62,6 +62,9 @@ Build a minimal proof of concept:
 - The project Python virtual environment is used in production.
 - Music is stored on a USB SSD mounted at `/mnt/music`.
 - `/mnt/music` is shared over SMB for Windows and Android LAN access.
+- `/mnt/music` should use systemd automount for removable USB storage recovery.
+- TheCakeIsAPI must not have a hard `RequiresMountsFor=/mnt/music` dependency on removable USB music storage.
+- Temporary loss of the music drive should not make the web application permanently unavailable.
 - AfterTouch currently runs in Docker on the Pi 4 at port 8001.
 - `soundtouch-cli` is installed directly on the Pi 4.
 - AfterTouch location remains configurable so a Pi Zero or another LAN host can also be used.

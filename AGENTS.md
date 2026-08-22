@@ -158,3 +158,5 @@ When providing deployment or upgrade instructions:
 * Verify release asset names, URLs, checksums, and the installation method before presenting commands.
 * Base commands on the user's actual installation rather than a generic deployment.
 * Prefer one complete, verified procedure over iterative trial-and-error instructions.
+* Do not reintroduce a hard systemd dependency requiring `/mnt/music` to remain continuously mounted.
+* Preserve removable-storage recovery behavior when changing deployment configuration.

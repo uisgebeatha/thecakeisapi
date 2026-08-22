@@ -2,7 +2,6 @@
 Description=TheCakeIsAPI music player
 Wants=network-online.target
 After=network-online.target
-RequiresMountsFor=/mnt/music
 
 [Service]
 Type=simple

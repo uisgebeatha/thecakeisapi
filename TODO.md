@@ -106,6 +106,9 @@
 - [x] Document boot startup with `systemctl enable`.
 - [x] Document automatic restart on service failure.
 - [x] Document service management commands.
+- [x] Configure `/mnt/music` with systemd automount for removable USB SSD recovery.
+- [x] Keep TheCakeIsAPI active during temporary USB music-storage loss.
+- [x] Verify recovery after SSD reconnect through automount access.
 - [x] Document `ffmpeg` / `ffprobe` recommendation for accurate Bose auto-advance timing.
 - [x] Verify mpv local playback works under systemd.
 - [x] Verify Bose playback works under systemd.

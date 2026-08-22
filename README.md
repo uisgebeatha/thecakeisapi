@@ -176,7 +176,6 @@ Recommended unit file:
 Description=TheCakeIsAPI music player
 Wants=network-online.target
 After=network-online.target
-RequiresMountsFor=/mnt/music
 
 [Service]
 Type=simple
@@ -245,6 +244,16 @@ sudo systemctl stop thecakeisapi.service
 
 The service expects `config.json` to exist locally in `/home/controller/thecakeisapi`.
 That file should remain uncommitted. The `controller` user must be able to read `/mnt/music`, run `mpv`, and run `soundtouch-cli`.
+
+Do not add a hard `RequiresMountsFor=/mnt/music` dependency to this service. The music library is removable USB storage, and testing showed that systemd will deliberately stop TheCakeIsAPI if the SSD briefly disconnects. The web application should remain available so the library can recover after the drive returns.
+
+Recommended `/etc/fstab` entry for the NTFS USB SSD:
+
+```fstab
+UUID=94FC4C08FC4BE2DA /mnt/music ntfs3 defaults,uid=1000,gid=1000,nofail,x-systemd.automount 0 0
+```
+
+With `x-systemd.automount`, `mnt-music.automount` remains active and access to `/mnt/music` automatically mounts the SSD when it is present. If the drive is temporarily disconnected, TheCakeIsAPI keeps running; after the SSD is reconnected, browsing the library or Samba access to `/mnt/music` triggers the mount again and normal operation resumes.
 
 For accurate track duration detection, install `ffmpeg` so `ffprobe` is available:
 
