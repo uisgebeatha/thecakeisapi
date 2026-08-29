@@ -32,6 +32,7 @@ from .settings import Settings
 BASE_DIR = Path(__file__).resolve().parent
 WEBUI_DIR = BASE_DIR / "webui"
 APP_VERSION_TOKEN = "__THECAKEISAPI_VERSION__"
+BOSE_STATUS_FAILURE_THRESHOLD = 3
 
 
 class PlayRequest(BaseModel):
@@ -545,6 +546,8 @@ def _play_bose_track(app: FastAPI, track: QueueTrack) -> None:
             )
         return
 
+    app.state.bose_playback_state.record_status_poll_started()
+    app.state.bose_playback_state.record_status_poll_success()
     app.state.bose_playback_state.state = "playing"
     app.state.bose_playback_state.confirmed_start_timestamp = _current_timestamp()
 
@@ -633,6 +636,10 @@ def _monitor_playback(app: FastAPI) -> None:
 
 
 def _sync_bose_playback(app: FastAPI) -> None:
+    _poll_bose_playback_state(app)
+    if app.state.bose_playback_state.status_poll_failures > 0:
+        return
+
     if not app.state.bose_playback_state.should_auto_advance(
         app.state.settings.bose_auto_advance_buffer_seconds,
     ):
@@ -665,6 +672,82 @@ def _sync_bose_playback(app: FastAPI) -> None:
     except (LibraryPathError, LibraryNotFoundError, UnsupportedAudioFileError, BosePlaybackError):
         app.state.bose_playback_state.error("Could not start next Bose track")
         app.state.playback_message = "Could not start next Bose track"
+
+
+def _poll_bose_playback_state(
+    app: FastAPI,
+    now_monotonic: float | None = None,
+) -> None:
+    playback_state = app.state.bose_playback_state
+    if app.state.active_output != "bose":
+        return
+    if playback_state.state not in {"starting", "playing", "paused"}:
+        return
+    if app.state.bose_now_playing_client is None:
+        return
+    if not playback_state.status_poll_due(
+        app.state.settings.bose_state_poll_interval_seconds,
+        now_monotonic,
+    ):
+        return
+
+    playback_state.record_status_poll_started(now_monotonic)
+    try:
+        status = app.state.bose_now_playing_client.fetch_status()
+    except BosePlaybackError:
+        _record_bose_status_poll_failure(app, "Bose speaker is unavailable")
+        return
+
+    if status.appears_to_be_stopped:
+        playback_state.record_status_poll_success()
+        if (
+            status.appears_to_be_custom_radio
+            and not status.appears_to_be_standby
+            and (
+                playback_state.state == "paused"
+                or _bose_track_reached_estimated_end(playback_state)
+            )
+        ):
+            return
+        reason = "Bose playback stopped externally"
+        playback_state.externally_stopped(reason)
+        app.state.playback_message = reason
+        return
+
+    if status.appears_to_be_custom_radio:
+        playback_state.record_status_poll_success()
+        if playback_state.state == "starting":
+            playback_state.state = "playing"
+            playback_state.confirmed_start_timestamp = _current_timestamp()
+            app.state.playback_message = f"Playing on Bose: {playback_state.track_name}"
+        return
+
+    if status.source:
+        playback_state.record_status_poll_success()
+        reason = f"Bose source changed externally to {status.source}"
+        playback_state.externally_stopped(reason)
+        app.state.playback_message = reason
+        return
+
+    _record_bose_status_poll_failure(app, "Bose status could not be confirmed")
+
+
+def _bose_track_reached_estimated_end(playback_state: BosePlaybackState) -> bool:
+    if playback_state.duration_seconds is None:
+        return False
+    elapsed_seconds = playback_state.elapsed_seconds()
+    return elapsed_seconds is not None and elapsed_seconds >= playback_state.duration_seconds
+
+
+def _record_bose_status_poll_failure(app: FastAPI, reason: str) -> None:
+    playback_state = app.state.bose_playback_state
+    failures = playback_state.record_status_poll_failure()
+    if failures < BOSE_STATUS_FAILURE_THRESHOLD:
+        return
+
+    message = f"{reason}; playback state cleared"
+    playback_state.externally_stopped(message)
+    app.state.playback_message = message
 
 
 def _playback_status(app: FastAPI) -> dict[str, object]:
@@ -707,6 +790,10 @@ def _playback_status(app: FastAPI) -> dict[str, object]:
             "stream_url": app.state.bose_playback_state.stream_url,
             "command": app.state.bose_playback_state.command,
             "warning": app.state.bose_playback_state.warning,
+            "last_confirmed_status_timestamp": (
+                app.state.bose_playback_state.last_confirmed_status_timestamp
+            ),
+            "status_poll_failures": app.state.bose_playback_state.status_poll_failures,
         },
     }
 

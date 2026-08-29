@@ -58,6 +58,8 @@ Build a minimal proof of concept:
 - The app should support switching output between Pi audio and Bose without rebuilding the queue.
 - Bose SoundTouch is the default browser playback selection; Pi 4 local playback remains available.
 - The UI should distinguish the selected output for new playback from the currently active output.
+- While Bose playback is active, periodically synchronize app-side state with the local Bose `/now_playing` endpoint.
+- Temporary Bose communication failures must not immediately clear playback state or trigger playback commands.
 
 ## Current Deployment Decisions
 

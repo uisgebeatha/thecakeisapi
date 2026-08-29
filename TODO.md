@@ -84,7 +84,7 @@
   - [x] Bose SoundTouch
 - [x] Maintain queue when changing output where practical.
 - [x] Display Bose app-side playback/timer status.
-- [ ] Display live Bose playback status from the speaker beyond start confirmation.
+- [x] Display live Bose playback status from the speaker beyond start confirmation.
 - [ ] Preserve playback position where practical.
 
 ## Playback State Cleanup and Library Polish
@@ -98,7 +98,14 @@
 - [x] Stop Bose playback before starting Pi 4 local playback.
 - [x] Lower default Bose auto-advance buffer to 1 second.
 - [x] Hide common filesystem metadata folders from library browsing.
-- [ ] Detect external Bose state changes or power-off using periodic `now_playing` polling.
+- [x] Detect external Bose state changes or power-off using periodic `now_playing` polling.
+
+## v0.4.1 - Bose Playback-State Reliability
+
+- [x] Poll Bose state only while Bose playback is active.
+- [x] Clear stale playback state after confirmed stop, standby, or source change.
+- [x] Tolerate transient Bose communication failures before marking the speaker unavailable.
+- [x] Suspend Bose timer auto-advance while speaker status is uncertain.
 
 ## Milestone 5 Deployment
 

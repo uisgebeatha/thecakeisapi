@@ -120,7 +120,7 @@ class WebUiTransportTests(unittest.TestCase):
         app_js = APP_JS.read_text(encoding="utf-8")
         styles_css = STYLES_CSS.read_text(encoding="utf-8")
 
-        self.assertIn('__version__ = "0.4.0"', package_init)
+        self.assertIn('__version__ = "0.4.1"', package_init)
         self.assertIn("version=__version__", main_py)
         self.assertIn('"version": __version__', main_py)
         self.assertNotIn("0.4.0", index_html)

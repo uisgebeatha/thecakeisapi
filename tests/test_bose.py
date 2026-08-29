@@ -23,6 +23,7 @@ from thecakeisapi.main import (
     _play_track,
     _playback_status,
     _pause_bose_playback,
+    _poll_bose_playback_state,
     _resume_bose_playback,
     _stop_bose_playback,
     _sync_bose_playback,
@@ -346,6 +347,23 @@ class BoseNowPlayingTests(unittest.TestCase):
 
         self.assertIsNone(status)
 
+    def test_now_playing_parses_stopped_play_status(self) -> None:
+        status = parse_now_playing(
+            '<nowPlaying source="LOCAL_INTERNET_RADIO">'
+            '<playStatus>STOP_STATE</playStatus></nowPlaying>',
+        )
+
+        self.assertEqual(status.play_status, "STOP_STATE")
+        self.assertTrue(status.appears_to_be_stopped)
+        self.assertFalse(status.appears_to_be_standby)
+
+    @patch("thecakeisapi.bose.urlopen", side_effect=TimeoutError("timed out"))
+    def test_now_playing_timeout_uses_playback_error(self, _urlopen_mock) -> None:
+        client = BoseNowPlayingClient("192.168.42.101")
+
+        with self.assertRaisesRegex(BosePlaybackError, "now_playing request failed"):
+            client.fetch_status()
+
 
 class BosePlaybackStateTests(unittest.TestCase):
     def test_elapsed_seconds_uses_confirmed_start_timestamp(self) -> None:
@@ -440,6 +458,9 @@ class PlaybackCleanupTests(unittest.TestCase):
     def test_default_bose_auto_advance_buffer_is_one_second(self) -> None:
         self.assertEqual(Settings().bose_auto_advance_buffer_seconds, 1.0)
 
+    def test_default_bose_state_poll_interval_is_five_seconds(self) -> None:
+        self.assertEqual(Settings().bose_state_poll_interval_seconds, 5.0)
+
     def test_bose_status_survives_refresh_equivalent_status_read(self) -> None:
         with temp_music_app() as app:
             app.state.playback_queue.set_tracks(
@@ -510,6 +531,240 @@ class PlaybackCleanupTests(unittest.TestCase):
 
             self.assertTrue(app.state.bose_client.stopped)
             self.assertEqual(local_player.played_paths, ["first.mp3"])
+
+
+class BoseStatePollingTests(unittest.TestCase):
+    def test_poll_confirms_delayed_bose_start(self) -> None:
+        with temp_music_app() as app:
+            app.state.active_output = "bose"
+            app.state.bose_playback_state = BosePlaybackState(
+                track_path="first.mp3",
+                track_name="first.mp3",
+                state="starting",
+            )
+            app.state.bose_now_playing_client = FakeNowPlayingClient(
+                [
+                    '<nowPlaying source="LOCAL_INTERNET_RADIO">'
+                    '<playStatus>PLAY_STATE</playStatus></nowPlaying>',
+                ],
+            )
+
+            _poll_bose_playback_state(app, now_monotonic=10.0)
+
+            self.assertEqual(app.state.bose_playback_state.state, "playing")
+            self.assertIsNotNone(
+                app.state.bose_playback_state.confirmed_start_timestamp,
+            )
+            self.assertIsNotNone(
+                app.state.bose_playback_state.last_confirmed_status_timestamp,
+            )
+            self.assertEqual(app.state.bose_playback_state.status_poll_failures, 0)
+
+    def test_external_bose_stop_clears_stale_playing_state(self) -> None:
+        with temp_music_app() as app:
+            app.state.active_output = "bose"
+            app.state.bose_playback_state = BosePlaybackState(
+                track_path="first.mp3",
+                track_name="first.mp3",
+                state="playing",
+                confirmed_start_timestamp=time.time() - 3,
+                duration_seconds=30.0,
+            )
+            app.state.bose_now_playing_client = FakeNowPlayingClient(
+                [
+                    '<nowPlaying source="LOCAL_INTERNET_RADIO">'
+                    '<playStatus>STOP_STATE</playStatus></nowPlaying>',
+                ],
+            )
+
+            _poll_bose_playback_state(app, now_monotonic=10.0)
+
+            self.assertEqual(app.state.bose_playback_state.state, "stopped")
+            self.assertIsNone(
+                app.state.bose_playback_state.confirmed_start_timestamp,
+            )
+            self.assertEqual(app.state.playback_message, "Bose playback stopped externally")
+            self.assertFalse(app.state.bose_client.stopped)
+            status = _playback_status(app)
+            self.assertEqual(status["state"], "stopped")
+            self.assertEqual(status["bose"]["status_poll_failures"], 0)
+
+    def test_external_bose_standby_clears_stale_playing_state(self) -> None:
+        with temp_music_app() as app:
+            app.state.active_output = "bose"
+            app.state.bose_playback_state = BosePlaybackState(state="playing")
+            app.state.bose_now_playing_client = FakeNowPlayingClient(
+                ['<nowPlaying source="STANDBY"></nowPlaying>'],
+            )
+
+            _poll_bose_playback_state(app, now_monotonic=10.0)
+
+            self.assertEqual(app.state.bose_playback_state.state, "stopped")
+            self.assertEqual(app.state.playback_message, "Bose playback stopped externally")
+
+    def test_external_bose_source_change_clears_stale_playing_state(self) -> None:
+        with temp_music_app() as app:
+            app.state.active_output = "bose"
+            app.state.bose_playback_state = BosePlaybackState(state="playing")
+            app.state.bose_now_playing_client = FakeNowPlayingClient(
+                ['<nowPlaying source="AUX"></nowPlaying>'],
+            )
+
+            _poll_bose_playback_state(app, now_monotonic=10.0)
+
+            self.assertEqual(app.state.bose_playback_state.state, "stopped")
+            self.assertIn("AUX", app.state.playback_message)
+
+    def test_bose_pause_is_not_mistaken_for_external_stop(self) -> None:
+        with temp_music_app() as app:
+            app.state.active_output = "bose"
+            app.state.bose_playback_state = BosePlaybackState(
+                state="paused",
+                paused_elapsed_seconds=3.0,
+            )
+            app.state.bose_now_playing_client = FakeNowPlayingClient(
+                [
+                    '<nowPlaying source="LOCAL_INTERNET_RADIO">'
+                    '<playStatus>STOP_STATE</playStatus></nowPlaying>',
+                ],
+            )
+
+            _poll_bose_playback_state(app, now_monotonic=10.0)
+
+            self.assertEqual(app.state.bose_playback_state.state, "paused")
+            self.assertEqual(app.state.bose_playback_state.paused_elapsed_seconds, 3.0)
+
+    def test_natural_bose_stop_still_uses_existing_auto_advance(self) -> None:
+        with temp_music_app() as app:
+            app.state.playback_queue.set_tracks(
+                [
+                    QueueTrack(path="first.mp3", name="first.mp3"),
+                    QueueTrack(path="second.mp3", name="second.mp3"),
+                ],
+                "first.mp3",
+            )
+            app.state.active_output = "bose"
+            app.state.bose_playback_state = BosePlaybackState(
+                state="playing",
+                confirmed_start_timestamp=time.time() - 3,
+                duration_seconds=1.0,
+            )
+            app.state.bose_now_playing_client = FakeNowPlayingClient(
+                [
+                    '<nowPlaying source="LOCAL_INTERNET_RADIO">'
+                    '<playStatus>STOP_STATE</playStatus></nowPlaying>',
+                ],
+            )
+
+            _sync_bose_playback(app)
+
+            self.assertEqual(app.state.playback_queue.current().path, "second.mp3")
+            self.assertEqual(app.state.bose_client.played_names, ["second.mp3"])
+
+    def test_temporary_bose_query_failure_does_not_force_stop(self) -> None:
+        with temp_music_app() as app:
+            app.state.active_output = "bose"
+            app.state.playback_message = "Playing on Bose: first.mp3"
+            app.state.bose_playback_state = BosePlaybackState(state="playing")
+            app.state.bose_now_playing_client = FakeNowPlayingClient(
+                [
+                    BosePlaybackError("temporary timeout"),
+                    '<nowPlaying source="LOCAL_INTERNET_RADIO"></nowPlaying>',
+                ],
+            )
+
+            _poll_bose_playback_state(app, now_monotonic=10.0)
+
+            self.assertEqual(app.state.bose_playback_state.state, "playing")
+            self.assertEqual(app.state.bose_playback_state.status_poll_failures, 1)
+            self.assertEqual(app.state.playback_message, "Playing on Bose: first.mp3")
+
+            _poll_bose_playback_state(app, now_monotonic=15.0)
+
+            self.assertEqual(app.state.bose_playback_state.state, "playing")
+            self.assertEqual(app.state.bose_playback_state.status_poll_failures, 0)
+
+    def test_repeated_bose_query_failures_mark_speaker_unavailable(self) -> None:
+        with temp_music_app() as app:
+            app.state.active_output = "bose"
+            app.state.bose_playback_state = BosePlaybackState(
+                state="playing",
+                confirmed_start_timestamp=time.time() - 3,
+            )
+            app.state.bose_now_playing_client = FakeNowPlayingClient(
+                [
+                    BosePlaybackError("offline"),
+                    BosePlaybackError("offline"),
+                    BosePlaybackError("offline"),
+                ],
+            )
+
+            _poll_bose_playback_state(app, now_monotonic=10.0)
+            _poll_bose_playback_state(app, now_monotonic=15.0)
+            self.assertEqual(app.state.bose_playback_state.state, "playing")
+
+            _poll_bose_playback_state(app, now_monotonic=20.0)
+
+            self.assertEqual(app.state.bose_playback_state.state, "stopped")
+            self.assertEqual(app.state.bose_playback_state.status_poll_failures, 3)
+            self.assertIn("unavailable", app.state.playback_message)
+            self.assertFalse(app.state.bose_client.stopped)
+
+            _poll_bose_playback_state(app, now_monotonic=25.0)
+            self.assertEqual(app.state.bose_now_playing_client.fetch_count, 3)
+
+    def test_bose_polling_is_rate_limited(self) -> None:
+        with temp_music_app() as app:
+            app.state.active_output = "bose"
+            app.state.bose_playback_state = BosePlaybackState(state="playing")
+            client = FakeNowPlayingClient(
+                ['<nowPlaying source="LOCAL_INTERNET_RADIO"></nowPlaying>'],
+            )
+            app.state.bose_now_playing_client = client
+
+            _poll_bose_playback_state(app, now_monotonic=10.0)
+            _poll_bose_playback_state(app, now_monotonic=14.9)
+            _poll_bose_playback_state(app, now_monotonic=15.0)
+
+            self.assertEqual(client.fetch_count, 2)
+
+    def test_bose_polling_does_not_run_for_local_output(self) -> None:
+        with temp_music_app() as app:
+            app.state.active_output = "local"
+            app.state.bose_playback_state = BosePlaybackState(state="playing")
+            client = FakeNowPlayingClient(
+                ['<nowPlaying source="LOCAL_INTERNET_RADIO"></nowPlaying>'],
+            )
+            app.state.bose_now_playing_client = client
+
+            _poll_bose_playback_state(app, now_monotonic=10.0)
+
+            self.assertEqual(client.fetch_count, 0)
+
+    def test_poll_failure_suspends_bose_auto_advance(self) -> None:
+        with temp_music_app() as app:
+            app.state.playback_queue.set_tracks(
+                [
+                    QueueTrack(path="first.mp3", name="first.mp3"),
+                    QueueTrack(path="second.mp3", name="second.mp3"),
+                ],
+                "first.mp3",
+            )
+            app.state.active_output = "bose"
+            app.state.bose_playback_state = BosePlaybackState(
+                state="playing",
+                confirmed_start_timestamp=time.time() - 10,
+                duration_seconds=1.0,
+            )
+            app.state.bose_now_playing_client = FakeNowPlayingClient(
+                [BosePlaybackError("temporary timeout")],
+            )
+
+            _sync_bose_playback(app)
+
+            self.assertEqual(app.state.playback_queue.current().path, "first.mp3")
+            self.assertEqual(app.state.bose_client.played_names, [])
+            self.assertEqual(app.state.bose_playback_state.status_poll_failures, 1)
 
 
 class BoseAutoAdvanceTests(unittest.TestCase):
@@ -652,13 +907,19 @@ class BoseAutoAdvanceTests(unittest.TestCase):
 
 
 class FakeNowPlayingClient(BoseNowPlayingClient):
-    def __init__(self, raw_statuses: list[str]) -> None:
+    def __init__(self, raw_statuses: list[str | Exception]) -> None:
         self.raw_statuses = raw_statuses
+        self.fetch_count = 0
 
     def fetch_status(self) -> BoseNowPlayingStatus:
+        self.fetch_count += 1
         if len(self.raw_statuses) > 1:
-            return parse_now_playing(self.raw_statuses.pop(0))
-        return parse_now_playing(self.raw_statuses[0])
+            raw_status = self.raw_statuses.pop(0)
+        else:
+            raw_status = self.raw_statuses[0]
+        if isinstance(raw_status, Exception):
+            raise raw_status
+        return parse_now_playing(raw_status)
 
 
 class FakeBoseClient:

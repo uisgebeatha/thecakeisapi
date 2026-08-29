@@ -22,6 +22,7 @@ class BosePlaybackRequest:
 @dataclass(frozen=True)
 class BoseNowPlayingStatus:
     source: str | None
+    play_status: str | None
     raw_text: str
 
     @property
@@ -44,6 +45,26 @@ class BoseNowPlayingStatus:
             for marker in custom_markers
         )
 
+    @property
+    def appears_to_be_stopped(self) -> bool:
+        normalized_source = (self.source or "").upper()
+        normalized_play_status = (self.play_status or "").upper()
+        normalized_text = self.raw_text.upper()
+        stopped_markers = ("STANDBY", "STOP_STATE", "STOPPED")
+        return any(
+            marker in normalized_source
+            or marker in normalized_play_status
+            or marker in normalized_text
+            for marker in stopped_markers
+        )
+
+    @property
+    def appears_to_be_standby(self) -> bool:
+        return (
+            "STANDBY" in (self.source or "").upper()
+            or "STANDBY" in self.raw_text.upper()
+        )
+
 
 @dataclass
 class BosePlaybackState:
@@ -57,6 +78,9 @@ class BosePlaybackState:
     stream_url: str | None = None
     command: list[str] | None = None
     warning: str | None = None
+    last_status_poll_monotonic: float | None = None
+    last_confirmed_status_timestamp: float | None = None
+    status_poll_failures: int = 0
 
     def elapsed_seconds(self, now: float | None = None) -> float | None:
         if self.state == "paused":
@@ -83,6 +107,39 @@ class BosePlaybackState:
         self.confirmed_start_timestamp = None
         self.paused_elapsed_seconds = None
         self.warning = None
+        self.last_status_poll_monotonic = None
+        self.status_poll_failures = 0
+
+    def status_poll_due(
+        self,
+        interval_seconds: float,
+        now_monotonic: float | None = None,
+    ) -> bool:
+        current_time = time.monotonic() if now_monotonic is None else now_monotonic
+        if self.last_status_poll_monotonic is None:
+            return True
+        return current_time - self.last_status_poll_monotonic >= interval_seconds
+
+    def record_status_poll_started(self, now_monotonic: float | None = None) -> None:
+        self.last_status_poll_monotonic = (
+            time.monotonic() if now_monotonic is None else now_monotonic
+        )
+
+    def record_status_poll_success(self, now_timestamp: float | None = None) -> None:
+        self.last_confirmed_status_timestamp = (
+            time.time() if now_timestamp is None else now_timestamp
+        )
+        self.status_poll_failures = 0
+
+    def record_status_poll_failure(self) -> int:
+        self.status_poll_failures += 1
+        return self.status_poll_failures
+
+    def externally_stopped(self, reason: str) -> None:
+        self.state = "stopped"
+        self.confirmed_start_timestamp = None
+        self.paused_elapsed_seconds = None
+        self.warning = reason
 
     def pause(self, now: float | None = None) -> None:
         if self.state != "playing":
@@ -110,6 +167,8 @@ class BosePlaybackState:
         self.paused_elapsed_seconds = None
         self.state = "playing"
         self.warning = "Bose resume restarts playback; timer reset"
+        self.last_status_poll_monotonic = None
+        self.status_poll_failures = 0
 
     def ended(self) -> None:
         self.state = "ended"
@@ -268,7 +327,7 @@ class BoseNowPlayingClient:
         try:
             with urlopen(request, timeout=self.timeout_seconds) as response:
                 body = response.read().decode("utf-8", errors="replace")
-        except URLError as error:
+        except (URLError, OSError) as error:
             raise BosePlaybackError(f"Bose now_playing request failed: {error}") from error
 
         return parse_now_playing(body)
@@ -302,7 +361,7 @@ def parse_now_playing(raw_text: str) -> BoseNowPlayingStatus:
     try:
         root = ElementTree.fromstring(raw_text)
     except ElementTree.ParseError:
-        return BoseNowPlayingStatus(source=None, raw_text=raw_text)
+        return BoseNowPlayingStatus(source=None, play_status=None, raw_text=raw_text)
 
     source = root.attrib.get("source")
     if not source:
@@ -310,7 +369,12 @@ def parse_now_playing(raw_text: str) -> BoseNowPlayingStatus:
         if content_item is not None:
             source = content_item.attrib.get("source")
 
-    return BoseNowPlayingStatus(source=source, raw_text=raw_text)
+    play_status = root.attrib.get("playStatus") or root.findtext(".//playStatus")
+    return BoseNowPlayingStatus(
+        source=source,
+        play_status=play_status,
+        raw_text=raw_text,
+    )
 
 
 def build_library_stream_url(public_base_url: str, library_path: str) -> str:

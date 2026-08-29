@@ -13,7 +13,7 @@ A lightweight self-hosted music player for Raspberry Pi with support for:
 
 The project is designed to remain simple, low-dependency, and easy to run on Raspberry Pi hardware.
 
-Current UI release: **v0.4.0**.
+Current release: **v0.4.1**.
 
 ## Dependencies
 
@@ -111,6 +111,8 @@ Bose controls use `soundtouch-cli`:
 
 When Bose playback is paused, the app-side timer and auto-advance countdown pause. Current Bose resume behavior restarts the stream from the beginning, so the app resets the displayed timer on resume/restart instead of showing stale progress.
 
+While Bose is the active output, TheCakeIsAPI checks the existing Bose `/now_playing` endpoint every five seconds. Confirmed standby, stopped playback, or a source change clears stale app-side playback state without sending a playback command. A single communication failure leaves playback state unchanged; three consecutive failures mark the speaker unavailable. Auto-advance is suspended while Bose status is uncertain so an externally powered-off speaker is not restarted by the app-side timer.
+
 ## Storage
 
 Music is currently stored on:
@@ -138,6 +140,7 @@ Example:
   "soundtouch_cli_command": "soundtouch-cli",
   "bose_start_confirm_timeout_seconds": 8.0,
   "bose_start_poll_interval_seconds": 0.5,
+  "bose_state_poll_interval_seconds": 5.0,
   "bose_auto_advance_buffer_seconds": 1.0,
   "mpv_command": "mpv",
   "mpv_ipc_path": "/tmp/thecakeisapi-mpv.sock"

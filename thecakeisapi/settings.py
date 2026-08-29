@@ -17,6 +17,7 @@ class Settings:
     soundtouch_cli_command: str = "soundtouch-cli"
     bose_start_confirm_timeout_seconds: float = 8.0
     bose_start_poll_interval_seconds: float = 0.5
+    bose_state_poll_interval_seconds: float = 5.0
     bose_auto_advance_buffer_seconds: float = 1.0
     mpv_command: str = "mpv"
     mpv_ipc_path: Path = Path("/tmp/thecakeisapi-mpv.sock")
@@ -75,6 +76,16 @@ class Settings:
                 ),
             ),
         )
+        bose_state_poll_interval_seconds = os.getenv(
+            "THECAKEISAPI_BOSE_STATE_POLL_INTERVAL_SECONDS",
+            str(
+                cls._read_number(
+                    config_values,
+                    "bose_state_poll_interval_seconds",
+                    cls.bose_state_poll_interval_seconds,
+                ),
+            ),
+        )
         bose_auto_advance_buffer_seconds = os.getenv(
             "THECAKEISAPI_BOSE_AUTO_ADVANCE_BUFFER_SECONDS",
             str(
@@ -108,6 +119,10 @@ class Settings:
             bose_start_poll_interval_seconds=cls._parse_float(
                 "bose_start_poll_interval_seconds",
                 bose_start_poll_interval_seconds,
+            ),
+            bose_state_poll_interval_seconds=cls._parse_float(
+                "bose_state_poll_interval_seconds",
+                bose_state_poll_interval_seconds,
             ),
             bose_auto_advance_buffer_seconds=cls._parse_float(
                 "bose_auto_advance_buffer_seconds",
@@ -152,6 +167,9 @@ class Settings:
         if self.bose_start_poll_interval_seconds <= 0:
             raise ValueError("bose_start_poll_interval_seconds must be greater than 0")
 
+        if self.bose_state_poll_interval_seconds <= 0:
+            raise ValueError("bose_state_poll_interval_seconds must be greater than 0")
+
         if self.bose_auto_advance_buffer_seconds < 0:
             raise ValueError("bose_auto_advance_buffer_seconds must not be negative")
 
@@ -168,6 +186,7 @@ class Settings:
             "soundtouch_cli_command": self.soundtouch_cli_command,
             "bose_start_confirm_timeout_seconds": self.bose_start_confirm_timeout_seconds,
             "bose_start_poll_interval_seconds": self.bose_start_poll_interval_seconds,
+            "bose_state_poll_interval_seconds": self.bose_state_poll_interval_seconds,
             "bose_auto_advance_buffer_seconds": self.bose_auto_advance_buffer_seconds,
             "mpv_command": self.mpv_command,
             "mpv_ipc_path": str(self.mpv_ipc_path),
@@ -202,6 +221,7 @@ class Settings:
             "soundtouch_cli_command",
             "bose_start_confirm_timeout_seconds",
             "bose_start_poll_interval_seconds",
+            "bose_state_poll_interval_seconds",
             "bose_auto_advance_buffer_seconds",
             "mpv_command",
             "mpv_ipc_path",
