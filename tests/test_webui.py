@@ -44,9 +44,29 @@ class WebUiTransportTests(unittest.TestCase):
         app_js = APP_JS.read_text(encoding="utf-8")
         index_html = INDEX_HTML.read_text(encoding="utf-8")
 
-        self.assertIn('const DEFAULT_PLAYBACK_OUTPUT = "bose";', app_js)
-        self.assertIn('name="playback-output" value="bose"', index_html)
+        self.assertIn('name="playback-output" value="bose" checked', index_html)
         self.assertIn('name="playback-output" value="local"', index_html)
+        self.assertIn('input[name="playback-output"]', app_js)
+
+    def test_bose_and_local_selections_use_distinct_play_requests(self) -> None:
+        app_js = APP_JS.read_text(encoding="utf-8")
+
+        self.assertIn('bose: "/api/player/bose/play"', app_js)
+        self.assertIn('local: "/api/player/local/play"', app_js)
+        self.assertIn("return PLAY_ENDPOINTS[selectedOutput()];", app_js)
+        self.assertIn("fetch(`${playEndpoint()}?${params.toString()}`", app_js)
+
+    def test_output_selection_reads_the_checked_radio(self) -> None:
+        app_js = APP_JS.read_text(encoding="utf-8")
+
+        self.assertIn(
+            "const selectedOption = outputOptions.find((option) => option.checked);",
+            app_js,
+        )
+        self.assertIn(
+            'return selectedOption?.value === "local" ? "local" : "bose";',
+            app_js,
+        )
 
     def test_transport_controls_target_the_active_output(self) -> None:
         app_js = APP_JS.read_text(encoding="utf-8")
@@ -63,6 +83,35 @@ class WebUiTransportTests(unittest.TestCase):
         self.assertIn('id="active-output" class="active-output"', index_html)
         self.assertIn(".version-note", styles_css)
         self.assertIn(".active-output", styles_css)
+
+    def test_versioned_assets_prevent_old_selector_code_from_being_reused(self) -> None:
+        index_html = INDEX_HTML.read_text(encoding="utf-8")
+        main_py = MAIN_PY.read_text(encoding="utf-8")
+
+        self.assertIn("/static/styles.css?v=__THECAKEISAPI_VERSION__", index_html)
+        self.assertIn("/static/app.js?v=__THECAKEISAPI_VERSION__", index_html)
+        self.assertIn("v__THECAKEISAPI_VERSION__", index_html)
+        self.assertIn("index_html.replace(APP_VERSION_TOKEN, __version__)", main_py)
+        self.assertIn('headers={"Cache-Control": "no-cache"}', main_py)
+
+    def test_narrow_version_label_does_not_shrink_or_wrap(self) -> None:
+        styles_css = STYLES_CSS.read_text(encoding="utf-8")
+
+        self.assertRegex(
+            styles_css,
+            r"\.version-note\s*\{[^}]*flex: 0 0 auto;"
+            r"[^}]*min-width: max-content;[^}]*white-space: nowrap;",
+        )
+
+    def test_output_selection_style_does_not_require_has_support(self) -> None:
+        styles_css = STYLES_CSS.read_text(encoding="utf-8")
+
+        self.assertIn(
+            ".output-option input:checked + .output-option-label",
+            styles_css,
+        )
+        self.assertNotIn(".output-option:has(input:checked)", styles_css)
+        self.assertNotIn("pointer-events: none", styles_css)
 
     def test_application_version_has_one_runtime_source(self) -> None:
         package_init = PACKAGE_INIT.read_text(encoding="utf-8")

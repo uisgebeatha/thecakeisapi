@@ -4,8 +4,8 @@
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <title>thecakeisapi</title>
-    <link rel="stylesheet" href="/static/styles.css">
-    <script src="/static/app.js" defer></script>
+    <link rel="stylesheet" href="/static/styles.css?v=__THECAKEISAPI_VERSION__">
+    <script src="/static/app.js?v=__THECAKEISAPI_VERSION__" defer></script>
   </head>
   <body>
     <main class="shell">
@@ -13,7 +13,7 @@
         <h1>TheCakeIsAPI</h1>
         <div class="topbar-meta">
           <span id="health" class="status">Starting</span>
-          <span id="app-version" class="version-note" aria-label="Application version">v...</span>
+          <span id="app-version" class="version-note" aria-label="Application version">v__THECAKEISAPI_VERSION__</span>
         </div>
       </header>
 
@@ -56,12 +56,12 @@
           <fieldset id="output-selector" class="output-options">
             <legend class="visually-hidden">Playback output</legend>
             <label class="output-option">
-              <input type="radio" name="playback-output" value="bose">
-              <span>Bose SoundTouch</span>
+              <input type="radio" name="playback-output" value="bose" checked>
+              <span class="output-option-label">Bose SoundTouch</span>
             </label>
             <label class="output-option">
               <input type="radio" name="playback-output" value="local">
-              <span>Pi 4 Local</span>
+              <span class="output-option-label">Pi 4 Local</span>
             </label>
           </fieldset>
         </section>

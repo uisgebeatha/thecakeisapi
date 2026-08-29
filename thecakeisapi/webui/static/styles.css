@@ -103,7 +103,10 @@ h1 {
 }
 
 .version-note {
+  flex: 0 0 auto;
+  min-width: max-content;
   color: var(--muted);
+  white-space: nowrap;
 }
 
 .status[data-state="ok"] {
@@ -461,35 +464,42 @@ button.entry-details-button {
 
 .output-option {
   position: relative;
+  min-width: 0;
+  min-height: 2.75rem;
+  cursor: pointer;
+}
+
+.output-option input {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  margin: 0;
+  opacity: 0;
+}
+
+.output-option-label {
   display: flex;
   align-items: center;
   justify-content: center;
-  min-width: 0;
+  width: 100%;
   min-height: 2.75rem;
   border: 1px solid #929ba6;
   border-radius: 0.35rem;
   background: var(--surface-subtle);
   color: #3d4651;
-  cursor: pointer;
   font-size: 0.78rem;
   font-weight: 700;
   text-align: center;
 }
 
-.output-option input {
-  position: absolute;
-  opacity: 0;
-  pointer-events: none;
-}
-
-.output-option:has(input:checked) {
+.output-option input:checked + .output-option-label {
   border-color: var(--accent);
   background: var(--accent-soft);
   color: #185538;
   box-shadow: inset 0 0 0 1px var(--accent);
 }
 
-.output-option:has(input:focus-visible) {
+.output-option input:focus-visible + .output-option-label {
   outline: 3px solid color-mix(in srgb, var(--focus) 45%, transparent);
   outline-offset: 2px;
 }
@@ -749,14 +759,14 @@ button.entry-details-button {
     box-shadow: 0 -0.25rem 0.85rem rgba(0, 0, 0, 0.3);
   }
 
-  .output-option,
+  .output-option-label,
   .control-button {
     border-color: #69707a;
     background: #292d33;
     color: #f2f2ec;
   }
 
-  .output-option:has(input:checked) {
+  .output-option input:checked + .output-option-label {
     border-color: #5dad82;
     background: var(--accent-soft);
     color: #a9e5c8;

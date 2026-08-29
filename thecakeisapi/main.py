@@ -2,7 +2,7 @@ from pathlib import Path
 from threading import Event, Lock, Thread
 
 from fastapi import FastAPI, HTTPException
-from fastapi.responses import FileResponse
+from fastapi.responses import FileResponse, HTMLResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 
@@ -31,6 +31,7 @@ from .settings import Settings
 
 BASE_DIR = Path(__file__).resolve().parent
 WEBUI_DIR = BASE_DIR / "webui"
+APP_VERSION_TOKEN = "__THECAKEISAPI_VERSION__"
 
 
 class PlayRequest(BaseModel):
@@ -89,8 +90,12 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     )
 
     @app.get("/", include_in_schema=False)
-    def index() -> FileResponse:
-        return FileResponse(WEBUI_DIR / "index.html")
+    def index() -> HTMLResponse:
+        index_html = (WEBUI_DIR / "index.html").read_text(encoding="utf-8")
+        return HTMLResponse(
+            index_html.replace(APP_VERSION_TOKEN, __version__),
+            headers={"Cache-Control": "no-cache"},
+        )
 
     @app.get("/api/health")
     def health() -> dict[str, str]:

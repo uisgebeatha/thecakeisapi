@@ -26,7 +26,10 @@ let currentDirectoryFiles = [];
 let lastPlaybackState = null;
 let outputSelectionInitialized = false;
 
-const DEFAULT_PLAYBACK_OUTPUT = "bose";
+const PLAY_ENDPOINTS = Object.freeze({
+  bose: "/api/player/bose/play",
+  local: "/api/player/local/play",
+});
 
 async function loadApp() {
   try {
@@ -330,10 +333,9 @@ function syncOutputSelector(playbackState) {
     return;
   }
 
-  const initialOutput = isActivePlayback(playbackState)
-    ? playbackState.active_output
-    : DEFAULT_PLAYBACK_OUTPUT;
-  selectOutput(initialOutput);
+  if (isActivePlayback(playbackState)) {
+    selectOutput(playbackState.active_output);
+  }
   outputSelectionInitialized = true;
 }
 
@@ -496,7 +498,7 @@ function outputLabel() {
 }
 
 function playEndpoint() {
-  return selectedOutput() === "bose" ? "/api/player/bose/play" : "/api/player/local/play";
+  return PLAY_ENDPOINTS[selectedOutput()];
 }
 
 function transportEndpoint(action) {
@@ -615,7 +617,6 @@ window.addEventListener("hashchange", () => {
   loadDirectory(currentPath());
 });
 
-selectOutput(DEFAULT_PLAYBACK_OUTPUT);
 loadApp();
 setInterval(() => {
   if (lastPlaybackState !== null) {
