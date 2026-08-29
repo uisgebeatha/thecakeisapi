@@ -11,6 +11,7 @@ The app should manage a local music library stored on directly attached USB stor
 - Run on Raspberry Pi 4B with Ubuntu.
 - Use directly attached USB storage as the music library.
 - Provide a VLC-style browser interface.
+- Keep the browser interface responsive and practical on phone and desktop screens.
 - Browse music by folder and file structure.
 - Support MP3 playback.
 - Support queue / playlist playback.
@@ -55,6 +56,8 @@ Build a minimal proof of concept:
 - Playlists will be temporary queues only for the first version.
 - SMB will be used for NAS sharing.
 - The app should support switching output between Pi audio and Bose without rebuilding the queue.
+- Bose SoundTouch is the default browser playback selection; Pi 4 local playback remains available.
+- The UI should distinguish the selected output for new playback from the currently active output.
 
 ## Current Deployment Decisions
 
@@ -68,7 +71,7 @@ Build a minimal proof of concept:
 - AfterTouch currently runs in Docker on the Pi 4 at port 8001.
 - `soundtouch-cli` is installed directly on the Pi 4.
 - AfterTouch location remains configurable so a Pi Zero or another LAN host can also be used.
-- The default playback output should become Bose SoundTouch in a future revision.
+- The default browser playback output is Bose SoundTouch as of v0.4.0.
 
 ## Engineering Note - Bose Pause/Resume
 

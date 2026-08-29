@@ -6,6 +6,7 @@ from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 
+from . import __version__
 from .bose import (
     BoseNowPlayingClient,
     BosePlaybackError,
@@ -46,7 +47,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app = FastAPI(
         title="thecakeisapi",
         description="Lightweight local music player for Raspberry Pi.",
-        version="0.1.0",
+        version=__version__,
     )
     app.state.settings = app_settings
     app.state.local_player = MpvPlayer(
@@ -93,7 +94,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
 
     @app.get("/api/health")
     def health() -> dict[str, str]:
-        return {"status": "ok"}
+        return {"status": "ok", "version": __version__}
 
     @app.get("/api/settings")
     def read_settings() -> dict[str, str | int | float | None]:

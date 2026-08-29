@@ -10,15 +10,18 @@
   <body>
     <main class="shell">
       <header class="topbar">
-        <h1>thecakeisapi</h1>
-        <span id="health" class="status">Starting</span>
+        <h1>TheCakeIsAPI</h1>
+        <div class="topbar-meta">
+          <span id="health" class="status">Starting</span>
+          <span id="app-version" class="version-note" aria-label="Application version">v...</span>
+        </div>
       </header>
 
       <div class="content">
-        <section class="browser">
+        <section class="browser" aria-labelledby="library-heading">
           <div class="browser-header">
             <div>
-              <h2>Music Library</h2>
+              <h2 id="library-heading">Music Library</h2>
               <p id="library-path" class="path-label">/</p>
             </div>
             <button id="up-button" class="nav-button" type="button" disabled>Up</button>
@@ -27,10 +30,14 @@
           <ul id="library-list" class="library-list" aria-label="Music library"></ul>
         </section>
 
-        <aside class="playlist-panel">
-          <h2>Queue</h2>
-          <p id="queue-status" class="message">No tracks queued.</p>
-          <button id="clear-queue-button" class="nav-button" type="button">Clear Queue</button>
+        <aside class="playlist-panel" aria-labelledby="queue-heading">
+          <div class="queue-header">
+            <div>
+              <h2 id="queue-heading">Queue</h2>
+              <p id="queue-status" class="message">No tracks queued.</p>
+            </div>
+            <button id="clear-queue-button" class="nav-button" type="button">Clear Queue</button>
+          </div>
           <ol id="queue-list" class="queue-list" aria-label="Playback queue"></ol>
         </aside>
       </div>
@@ -41,19 +48,29 @@
           <p id="now-playing-title">Nothing playing</p>
           <p id="playback-status" class="message" aria-live="polite"></p>
         </section>
-        <section class="output-select" aria-label="Audio output">
-          <label for="output-selector">Output</label>
-          <select id="output-selector">
-            <option value="local">Pi 4 Local</option>
-            <option value="bose">Bose SoundTouch</option>
-          </select>
+        <section class="output-panel" aria-label="Audio output">
+          <div class="output-heading">
+            <span class="output-label">Play new tracks on</span>
+            <span id="active-output" class="active-output">No active output</span>
+          </div>
+          <fieldset id="output-selector" class="output-options">
+            <legend class="visually-hidden">Playback output</legend>
+            <label class="output-option">
+              <input type="radio" name="playback-output" value="bose">
+              <span>Bose SoundTouch</span>
+            </label>
+            <label class="output-option">
+              <input type="radio" name="playback-output" value="local">
+              <span>Pi 4 Local</span>
+            </label>
+          </fieldset>
         </section>
         <section class="transport" aria-label="Playback controls">
-          <button id="previous-button" class="control-button" type="button">Previous Track</button>
+          <button id="previous-button" class="control-button" type="button" aria-label="Previous track">Previous</button>
           <button id="play-button" class="control-button primary" type="button">Play</button>
           <button id="pause-button" class="control-button" type="button">Pause</button>
           <button id="stop-button" class="control-button" type="button">Stop</button>
-          <button id="next-button" class="control-button" type="button">Next Track</button>
+          <button id="next-button" class="control-button" type="button" aria-label="Next track">Next</button>
           <button id="repeat-button" class="control-button" type="button" aria-pressed="false">
             Repeat Track
           </button>

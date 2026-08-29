@@ -124,19 +124,20 @@
 - [ ] Decide whether music library scanning is needed.
 - [ ] Decide whether automatic rescan is needed.
 
+## v0.4.0 - UI / UX
+
+- [x] Make Bose SoundTouch the default playback output.
+- [x] Improve the responsive VLC-style layout for phone and desktop browsers.
+- [x] Clean up spacing, alignment, hierarchy, and control styling without adding frontend dependencies.
+- [x] Replace the output dropdown with a clear Bose / Pi 4 Local choice.
+- [x] Show the active output separately and keep transport controls tied to it.
+- [x] Display the application version in the top-right of the UI.
+
 ## Minor Improvements
 
-- [ ] Make Bose SoundTouch the default playback output.
-- [ ] Improve VLC-style UI layout.
-- [ ] Better mobile layout.
 - [ ] Consider album artwork support.
 - [ ] Consider volume control.
 - [ ] Consider shuffle mode.
-
-Improve output switching UX:
-- Current selector may jump back to the active output.
-- This is technically correct but visually confusing.
-- Consider replacing selector with explicit “Play on Pi 4” / “Play on Bose” actions or an “active output” display.
 
 ## Design Investigation
 

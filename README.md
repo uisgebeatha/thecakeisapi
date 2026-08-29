@@ -13,6 +13,8 @@ A lightweight self-hosted music player for Raspberry Pi with support for:
 
 The project is designed to remain simple, low-dependency, and easy to run on Raspberry Pi hardware.
 
+Current UI release: **v0.4.0**.
+
 ## Dependencies
 
 Required:
@@ -78,6 +80,8 @@ Raspberry Pi 4
 * Repeat Track
 
 ### Playback
+
+The responsive VLC-style browser keeps the folder library and temporary queue visible side by side on desktop and stacks them cleanly on phone-sized screens. Bose SoundTouch is the default choice for new playback; Pi 4 Local remains available in the output switcher. The active output and playback state are shown separately so transport controls remain tied to the backend that is actually playing.
 
 #### Raspberry Pi Local
 

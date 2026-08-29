@@ -1,4 +1,5 @@
 const healthBadge = document.querySelector("#health");
+const appVersion = document.querySelector("#app-version");
 const libraryStatus = document.querySelector("#library-status");
 const playbackStatus = document.querySelector("#playback-status");
 const libraryPath = document.querySelector("#library-path");
@@ -10,6 +11,8 @@ const elapsedTime = document.querySelector("#elapsed-time");
 const durationTime = document.querySelector("#duration-time");
 const trackProgress = document.querySelector("#track-progress");
 const outputSelector = document.querySelector("#output-selector");
+const outputOptions = [...document.querySelectorAll('input[name="playback-output"]')];
+const activeOutput = document.querySelector("#active-output");
 const clearQueueButton = document.querySelector("#clear-queue-button");
 const upButton = document.querySelector("#up-button");
 const previousButton = document.querySelector("#previous-button");
@@ -21,6 +24,9 @@ const repeatButton = document.querySelector("#repeat-button");
 
 let currentDirectoryFiles = [];
 let lastPlaybackState = null;
+let outputSelectionInitialized = false;
+
+const DEFAULT_PLAYBACK_OUTPUT = "bose";
 
 async function loadApp() {
   try {
@@ -38,6 +44,7 @@ async function loadApp() {
 
     healthBadge.textContent = health.status;
     healthBadge.dataset.state = "ok";
+    appVersion.textContent = `v${health.version}`;
     await renderBrowseResponse(browseResponse);
     await renderPlaybackResponse(playbackResponse);
   } catch (error) {
@@ -111,7 +118,7 @@ function createEntry(entry) {
   item.className = "library-item";
 
   const row = document.createElement("div");
-  row.className = "entry-row";
+  row.className = `entry-row entry-${entry.type}`;
 
   const detailsElement =
     entry.type === "directory" ? document.createElement("button") : document.createElement("div");
@@ -319,11 +326,15 @@ async function renderPlaybackResponse(response) {
 }
 
 function syncOutputSelector(playbackState) {
-  if (!playbackState.active_output || playbackState.state === "stopped") {
+  if (outputSelectionInitialized) {
     return;
   }
 
-  outputSelector.value = playbackState.active_output;
+  const initialOutput = isActivePlayback(playbackState)
+    ? playbackState.active_output
+    : DEFAULT_PLAYBACK_OUTPUT;
+  selectOutput(initialOutput);
+  outputSelectionInitialized = true;
 }
 
 function renderPlaybackState(playbackState) {
@@ -334,7 +345,25 @@ function renderPlaybackState(playbackState) {
 
   renderTimer(playbackState);
   renderQueue(playbackState.queue || []);
+  renderActiveOutput(playbackState);
   updateTransportButtons(playbackState);
+}
+
+function renderActiveOutput(playbackState) {
+  if (!isActivePlayback(playbackState)) {
+    activeOutput.textContent = "No active output";
+    activeOutput.dataset.state = "idle";
+    return;
+  }
+
+  const outputName = playbackState.active_output === "bose" ? "Bose" : "Pi 4 Local";
+  const stateName = {
+    paused: "Paused",
+    playing: "Playing",
+    starting: "Starting",
+  }[playbackState.state];
+  activeOutput.textContent = `${outputName} · ${stateName}`;
+  activeOutput.dataset.state = playbackState.state;
 }
 
 function playbackMessage(playbackState) {
@@ -437,8 +466,29 @@ function isPausedPlayback(playbackState) {
   return playbackState?.state === "paused" || playbackState?.paused === true;
 }
 
+function isActivePlayback(playbackState) {
+  return Boolean(
+    playbackState?.active_output &&
+      ["starting", "playing", "paused"].includes(playbackState.state),
+  );
+}
+
+function selectOutput(output) {
+  const option = outputOptions.find((candidate) => candidate.value === output);
+  if (option) {
+    option.checked = true;
+  }
+}
+
 function selectedOutput() {
-  return outputSelector.value === "bose" ? "bose" : "local";
+  const selectedOption = outputOptions.find((option) => option.checked);
+  return selectedOption?.value === "local" ? "local" : "bose";
+}
+
+function transportOutput() {
+  return isActivePlayback(lastPlaybackState)
+    ? lastPlaybackState.active_output
+    : selectedOutput();
 }
 
 function outputLabel() {
@@ -450,7 +500,7 @@ function playEndpoint() {
 }
 
 function transportEndpoint(action) {
-  const output = selectedOutput();
+  const output = transportOutput();
   if (output === "bose") {
     return `/api/player/bose/${action}`;
   }
@@ -507,13 +557,14 @@ playButton.addEventListener("click", () => {
 
 pauseButton.addEventListener("click", () => {
   const isPaused = isPausedPlayback(lastPlaybackState);
+  const output = transportOutput();
 
-  if (selectedOutput() === "bose" && isPaused) {
+  if (output === "bose" && isPaused) {
     sendTransportCommand("/api/player/bose/resume");
     return;
   }
 
-  if (selectedOutput() === "bose") {
+  if (output === "bose") {
     sendTransportCommand("/api/player/bose/pause");
     return;
   }
@@ -544,7 +595,7 @@ repeatButton.addEventListener("click", () => {
 });
 
 trackProgress.addEventListener("change", () => {
-  if (selectedOutput() === "bose") {
+  if (transportOutput() === "bose") {
     playbackStatus.textContent = "Seeking is not supported for Bose output yet.";
     playbackStatus.dataset.state = "";
     return;
@@ -557,15 +608,14 @@ trackProgress.addEventListener("change", () => {
 });
 
 outputSelector.addEventListener("change", () => {
-  if (lastPlaybackState !== null) {
-    renderPlaybackState(lastPlaybackState);
-  }
+  outputSelectionInitialized = true;
 });
 
 window.addEventListener("hashchange", () => {
   loadDirectory(currentPath());
 });
 
+selectOutput(DEFAULT_PLAYBACK_OUTPUT);
 loadApp();
 setInterval(() => {
   if (lastPlaybackState !== null) {
