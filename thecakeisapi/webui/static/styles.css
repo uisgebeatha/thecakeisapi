@@ -611,6 +611,10 @@ button.entry-details-button {
 
   .topbar {
     min-height: 3.25rem;
+    position: sticky;
+    top: 0;
+    z-index: 20;
+    box-shadow: 0 0.15rem 0.35rem rgba(20, 24, 28, 0.08);
   }
 
   .content {
@@ -621,6 +625,15 @@ button.entry-details-button {
   .playlist-panel {
     border-top: 1px solid var(--border);
     border-left: 0;
+  }
+
+  .browser-header {
+    position: sticky;
+    top: 3.25rem;
+    z-index: 10;
+    padding-block: 0.65rem;
+    background: var(--surface);
+    border-bottom: 1px solid var(--border);
   }
 
   .player-bar {

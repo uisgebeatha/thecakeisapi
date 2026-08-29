@@ -120,7 +120,7 @@ class WebUiTransportTests(unittest.TestCase):
         app_js = APP_JS.read_text(encoding="utf-8")
         styles_css = STYLES_CSS.read_text(encoding="utf-8")
 
-        self.assertIn('__version__ = "0.4.1"', package_init)
+        self.assertIn('__version__ = "0.4.2"', package_init)
         self.assertIn("version=__version__", main_py)
         self.assertIn('"version": __version__', main_py)
         self.assertNotIn("0.4.0", index_html)
@@ -133,6 +133,21 @@ class WebUiTransportTests(unittest.TestCase):
         self.assertIn("grid-template-columns: minmax(0, 1fr) clamp(", styles_css)
         self.assertIn("@media (max-width: 760px)", styles_css)
         self.assertIn("grid-template-columns: repeat(3, minmax(0, 1fr));", styles_css)
+
+    def test_mobile_header_and_library_navigation_are_sticky(self) -> None:
+        styles_css = STYLES_CSS.read_text(encoding="utf-8")
+        mobile_rules = styles_css.split("@media (max-width: 760px)", 1)[1]
+        mobile_rules = mobile_rules.split("@media (max-width: 420px)", 1)[0]
+
+        self.assertRegex(
+            mobile_rules,
+            r"\.topbar\s*\{[^}]*position: sticky;[^}]*top: 0;",
+        )
+        self.assertRegex(
+            mobile_rules,
+            r"\.browser-header\s*\{[^}]*position: sticky;[^}]*top: 3\.25rem;",
+        )
+        self.assertIn("position: fixed;", styles_css)
 
 
 if __name__ == "__main__":

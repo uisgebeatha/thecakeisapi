@@ -23,6 +23,7 @@ class BosePlaybackRequest:
 class BoseNowPlayingStatus:
     source: str | None
     play_status: str | None
+    track_name: str | None
     raw_text: str
 
     @property
@@ -63,6 +64,13 @@ class BoseNowPlayingStatus:
         return (
             "STANDBY" in (self.source or "").upper()
             or "STANDBY" in self.raw_text.upper()
+        )
+
+    @property
+    def appears_to_be_invalid_source(self) -> bool:
+        return (
+            "INVALID_SOURCE" in (self.source or "").upper()
+            or "INVALID_SOURCE" in self.raw_text.upper()
         )
 
 
@@ -340,16 +348,38 @@ class BoseNowPlayingClient:
     ) -> BoseNowPlayingStatus | None:
         deadline = time.monotonic() + timeout_seconds
         previous_raw_text = previous_status.raw_text if previous_status else None
-        previous_was_standby = (
-            previous_status is not None
-            and "STANDBY" in previous_status.raw_text.upper()
+        previous_was_standby = bool(
+            previous_status and previous_status.appears_to_be_standby
         )
+        previous_was_custom_radio = bool(
+            previous_status and previous_status.appears_to_be_custom_radio
+        )
+        saw_source_transition = False
 
         while True:
             status = self.fetch_status()
-            changed = previous_raw_text is None or status.raw_text != previous_raw_text
-            if status.appears_to_be_custom_radio and (changed or not previous_was_standby):
+            source_changed = (
+                previous_raw_text is not None
+                and status.raw_text != previous_raw_text
+                and not previous_was_custom_radio
+            )
+            track_changed = bool(
+                previous_status
+                and previous_status.track_name
+                and status.track_name
+                and previous_status.track_name != status.track_name
+            )
+            if status.appears_to_be_custom_radio and (
+                previous_raw_text is None
+                or previous_was_standby
+                or source_changed
+                or track_changed
+                or saw_source_transition
+            ):
                 return status
+
+            if previous_was_custom_radio and not status.appears_to_be_custom_radio:
+                saw_source_transition = True
 
             if time.monotonic() >= deadline:
                 return None
@@ -361,7 +391,12 @@ def parse_now_playing(raw_text: str) -> BoseNowPlayingStatus:
     try:
         root = ElementTree.fromstring(raw_text)
     except ElementTree.ParseError:
-        return BoseNowPlayingStatus(source=None, play_status=None, raw_text=raw_text)
+        return BoseNowPlayingStatus(
+            source=None,
+            play_status=None,
+            track_name=None,
+            raw_text=raw_text,
+        )
 
     source = root.attrib.get("source")
     if not source:
@@ -370,9 +405,11 @@ def parse_now_playing(raw_text: str) -> BoseNowPlayingStatus:
             source = content_item.attrib.get("source")
 
     play_status = root.attrib.get("playStatus") or root.findtext(".//playStatus")
+    track_name = root.findtext(".//track") or root.findtext(".//itemName")
     return BoseNowPlayingStatus(
         source=source,
         play_status=play_status,
+        track_name=track_name,
         raw_text=raw_text,
     )
 

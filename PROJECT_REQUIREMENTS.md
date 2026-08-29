@@ -60,6 +60,10 @@ Build a minimal proof of concept:
 - The UI should distinguish the selected output for new playback from the currently active output.
 - While Bose playback is active, periodically synchronize app-side state with the local Bose `/now_playing` endpoint.
 - Temporary Bose communication failures must not immediately clear playback state or trigger playback commands.
+- Treat short-lived Bose `INVALID_SOURCE` responses as custom-radio transition states; confirmed standby and genuine external source changes must still clear stale playback state.
+- Use `ffprobe` as the preferred duration source, with frame-based MP3 and STREAMINFO FLAC fallbacks when it is unavailable or fails.
+- On phone-sized screens, keep the app status and current library navigation visible while directory entries scroll.
+- Settings/configuration UI work is deferred to v0.4.3.
 
 ## Current Deployment Decisions
 

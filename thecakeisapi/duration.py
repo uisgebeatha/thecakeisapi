@@ -129,22 +129,36 @@ def _mp3_duration_seconds(path: Path) -> float | None:
     file_size = path.stat().st_size
     with path.open("rb") as audio_file:
         start_offset = _skip_id3v2_tag(audio_file)
-        audio_file.seek(start_offset)
-        search_data = audio_file.read(4096)
+        offset = start_offset
+        duration_seconds = 0.0
+        frame_count = 0
+        found_first_frame = False
 
-    for index in range(max(0, len(search_data) - 4)):
-        header = int.from_bytes(search_data[index : index + 4], "big")
-        bitrate_kbps = _mp3_bitrate_kbps(header)
-        if bitrate_kbps is None:
-            continue
+        while offset + 4 <= file_size:
+            audio_file.seek(offset)
+            header_bytes = audio_file.read(4)
+            if len(header_bytes) < 4:
+                break
 
-        audio_bytes = max(0, file_size - start_offset - index)
-        if audio_bytes == 0:
-            return None
+            frame_details = _mp3_frame_details(int.from_bytes(header_bytes, "big"))
+            if frame_details is None:
+                if found_first_frame:
+                    break
+                offset += 1
+                if offset - start_offset > 4096:
+                    break
+                continue
 
-        return audio_bytes / ((bitrate_kbps * 1000) / 8)
+            frame_length, samples_per_frame, sample_rate = frame_details
+            if offset + frame_length > file_size:
+                break
 
-    return None
+            found_first_frame = True
+            frame_count += 1
+            duration_seconds += samples_per_frame / sample_rate
+            offset += frame_length
+
+    return duration_seconds if frame_count else None
 
 
 def _skip_id3v2_tag(audio_file) -> int:
@@ -161,7 +175,26 @@ def _skip_id3v2_tag(audio_file) -> int:
     return 10 + tag_size
 
 
-def _mp3_bitrate_kbps(header: int) -> int | None:
+def _mp3_frame_details(header: int) -> tuple[int, int, int] | None:
+    header_values = _mp3_header_values(header)
+    if header_values is None:
+        return None
+
+    bitrate_kbps, sample_rate, version = header_values
+    padding = (header >> 9) & 0x01
+    if version == 0b11:
+        frame_length = (144000 * bitrate_kbps) // sample_rate + padding
+        samples_per_frame = 1152
+    else:
+        frame_length = (72000 * bitrate_kbps) // sample_rate + padding
+        samples_per_frame = 576
+
+    if frame_length < 4:
+        return None
+    return frame_length, samples_per_frame, sample_rate
+
+
+def _mp3_header_values(header: int) -> tuple[int, int, int] | None:
     if ((header >> 21) & 0x7FF) != 0x7FF:
         return None
 
@@ -180,7 +213,9 @@ def _mp3_bitrate_kbps(header: int) -> int | None:
         return None
 
     bitrate_key = "V1L3" if version == 0b11 else "V2L3"
-    if sample_rate_index not in MP3_SAMPLE_RATES[version]:
+    bitrate_kbps = MP3_BITRATES[bitrate_key].get(bitrate_index)
+    sample_rate = MP3_SAMPLE_RATES[version].get(sample_rate_index)
+    if bitrate_kbps is None or sample_rate is None:
         return None
 
-    return MP3_BITRATES[bitrate_key].get(bitrate_index)
+    return bitrate_kbps, sample_rate, version

@@ -107,6 +107,14 @@
 - [x] Tolerate transient Bose communication failures before marking the speaker unavailable.
 - [x] Suspend Bose timer auto-advance while speaker status is uncertain.
 
+## v0.4.2 - Playback Reliability and Mobile Navigation
+
+- [x] Require a confirmed Bose custom-radio transition before timing the next queued track.
+- [x] Treat transient `INVALID_SOURCE` responses as unsettled transitions, not immediate external takeovers.
+- [x] Calculate fallback MP3 duration from frames so variable-bitrate tracks do not use the first frame's bitrate for the whole file.
+- [x] Keep the mobile app status and library navigation visible while directory entries scroll.
+- [x] Keep Settings/configuration UI work deferred to v0.4.3.
+
 ## Milestone 5 Deployment
 
 - [x] Add recommended systemd service template for TheCakeIsAPI.
@@ -171,5 +179,5 @@
   - [x] Support a full custom executable path.
   - [ ] Fully document configuration examples.
 
-- [ ] Consider a future settings UI for editing these values.
+- [ ] Add a Settings/configuration UI in v0.4.3.
 - [ ] Display TheCakeIsAPI, AfterTouch, and `soundtouch-cli` versions in the UI.

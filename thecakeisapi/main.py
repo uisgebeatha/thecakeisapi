@@ -698,6 +698,10 @@ def _poll_bose_playback_state(
         _record_bose_status_poll_failure(app, "Bose speaker is unavailable")
         return
 
+    if status.appears_to_be_invalid_source:
+        _record_bose_status_poll_failure(app, "Bose source transition did not settle")
+        return
+
     if status.appears_to_be_stopped:
         playback_state.record_status_poll_success()
         if (

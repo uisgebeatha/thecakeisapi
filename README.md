@@ -13,7 +13,7 @@ A lightweight self-hosted music player for Raspberry Pi with support for:
 
 The project is designed to remain simple, low-dependency, and easy to run on Raspberry Pi hardware.
 
-Current release: **v0.4.1**.
+Current release: **v0.4.2**.
 
 ## Dependencies
 
@@ -81,7 +81,7 @@ Raspberry Pi 4
 
 ### Playback
 
-The responsive VLC-style browser keeps the folder library and temporary queue visible side by side on desktop and stacks them cleanly on phone-sized screens. Bose SoundTouch is the default choice for new playback; Pi 4 Local remains available in the output switcher. The active output and playback state are shown separately so transport controls remain tied to the backend that is actually playing.
+The responsive VLC-style browser keeps the folder library and temporary queue visible side by side on desktop and stacks them cleanly on phone-sized screens. On phones, the app header and current library path remain sticky while directory entries scroll beneath them; the Now Playing controls remain fixed at the bottom. Bose SoundTouch is the default choice for new playback; Pi 4 Local remains available in the output switcher. The active output and playback state are shown separately so transport controls remain tied to the backend that is actually playing.
 
 #### Raspberry Pi Local
 
@@ -111,7 +111,7 @@ Bose controls use `soundtouch-cli`:
 
 When Bose playback is paused, the app-side timer and auto-advance countdown pause. Current Bose resume behavior restarts the stream from the beginning, so the app resets the displayed timer on resume/restart instead of showing stale progress.
 
-While Bose is the active output, TheCakeIsAPI checks the existing Bose `/now_playing` endpoint every five seconds. Confirmed standby, stopped playback, or a source change clears stale app-side playback state without sending a playback command. A single communication failure leaves playback state unchanged; three consecutive failures mark the speaker unavailable. Auto-advance is suspended while Bose status is uncertain so an externally powered-off speaker is not restarted by the app-side timer.
+While Bose is the active output, TheCakeIsAPI checks the existing Bose `/now_playing` endpoint every five seconds. Confirmed standby, stopped playback, or a source change clears stale app-side playback state without sending a playback command. A brief `INVALID_SOURCE` response during a custom-radio track change is treated as a transition rather than an external takeover. A single communication failure leaves playback state unchanged; three consecutive failures mark the speaker unavailable. Auto-advance is suspended while Bose status is uncertain so an externally powered-off speaker is not restarted by the app-side timer.
 
 ## Storage
 
@@ -149,6 +149,8 @@ Example:
 `aftertouch_base_url` may point to AfterTouch running on another device, such as a Pi Zero, or locally in Docker on the Pi 4. The Bose speaker must be able to reach the configured address and port.
 
 `soundtouch_cli_command` may be a command available in `PATH`, such as `soundtouch-cli`, or a full executable path.
+
+Browser-based Settings/configuration editing is deferred to v0.4.3. v0.4.2 continues to use the existing configuration file.
 
 ## Running
 
@@ -268,7 +270,7 @@ For accurate track duration detection, install `ffmpeg` so `ffprobe` is availabl
 sudo apt install ffmpeg
 ```
 
-TheCakeIsAPI uses `ffprobe` when available for MP3 and FLAC duration detection. If `ffprobe` is missing or fails, the app falls back to its built-in duration estimator. Accurate duration detection is recommended for Bose playback because Bose queue auto-advance uses the local track duration plus a small buffer.
+TheCakeIsAPI uses `ffprobe` when available for MP3 and FLAC duration detection. If `ffprobe` is missing or fails, FLAC duration comes from STREAMINFO and MP3 duration is calculated by scanning audio frames, including variable-bitrate files. Accurate duration detection is recommended for Bose playback because Bose queue auto-advance uses the local track duration plus a small buffer.
 
 ## Current Status
 
