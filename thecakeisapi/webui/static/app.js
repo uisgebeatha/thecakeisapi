@@ -319,7 +319,10 @@ async function sendTransportCommand(endpoint) {
 
 async function refreshPlaybackStatus() {
   try {
-    const response = await fetch("/api/player/status");
+    const statusUrl = selectedOutput() === "bose"
+      ? "/api/player/status?observe_bose=true"
+      : "/api/player/status";
+    const response = await fetch(statusUrl);
     await renderPlaybackResponse(response);
   } catch (error) {
     playbackStatus.textContent = "Playback status is unavailable.";
@@ -352,9 +355,16 @@ function syncOutputSelector(playbackState) {
 
 function renderPlaybackState(playbackState) {
   const nowPlaying = playbackState.now_playing;
-  nowPlayingTitle.textContent = nowPlaying ? nowPlaying.name : "Nothing playing";
+  const externalBose = isExternalBosePlayback(playbackState);
+  nowPlayingTitle.textContent = externalBose
+    ? playbackState.bose.external_display_name || "Bose"
+    : nowPlaying
+      ? nowPlaying.name
+      : "Nothing playing";
   playbackStatus.textContent = playbackMessage(playbackState);
-  playbackStatus.dataset.state = playbackState.state === "stopped" ? "" : "ok";
+  playbackStatus.dataset.state = (
+    playbackState.state === "stopped" && !externalBose ? "" : "ok"
+  );
 
   renderTimer(playbackState);
   renderQueue(playbackState.queue || []);
@@ -363,6 +373,12 @@ function renderPlaybackState(playbackState) {
 }
 
 function renderActiveOutput(playbackState) {
+  if (isExternalBosePlayback(playbackState)) {
+    activeOutput.textContent = "Bose · External";
+    activeOutput.dataset.state = "external";
+    return;
+  }
+
   if (!isActivePlayback(playbackState)) {
     activeOutput.textContent = "No active output";
     activeOutput.dataset.state = "idle";
@@ -380,6 +396,10 @@ function renderActiveOutput(playbackState) {
 }
 
 function playbackMessage(playbackState) {
+  if (isExternalBosePlayback(playbackState)) {
+    return "External Bose playback";
+  }
+
   if (playbackState.message) {
     return playbackState.message;
   }
@@ -459,6 +479,7 @@ function moveQueueTrack(path, direction) {
 }
 
 function updateTransportButtons(playbackState) {
+  const externalBose = isExternalBosePlayback(playbackState);
   const hasTrack = Boolean(playbackState.now_playing);
   const isPlaying = playbackState.state === "playing";
   const isPaused = isPausedPlayback(playbackState);
@@ -466,13 +487,14 @@ function updateTransportButtons(playbackState) {
   const playPauseLabel = isPlaying ? "Pause" : isPaused ? "Resume" : "Play";
   const repeatLabel = playbackState.repeat_track ? "Repeat track on" : "Repeat track off";
 
-  playButton.disabled = !hasTrack || isStarting;
+  playButton.disabled = externalBose || !hasTrack || isStarting;
   playButton.dataset.controlState = isPlaying ? "pause" : "play";
   playButton.setAttribute("aria-label", playPauseLabel);
   playButton.title = playPauseLabel;
-  stopButton.disabled = !hasTrack || playbackState.state === "stopped";
-  previousButton.disabled = !hasTrack;
-  nextButton.disabled = !hasTrack;
+  stopButton.disabled = externalBose || !hasTrack || playbackState.state === "stopped";
+  previousButton.disabled = externalBose || !hasTrack;
+  nextButton.disabled = externalBose || !hasTrack;
+  repeatButton.disabled = externalBose;
   repeatButton.dataset.active = playbackState.repeat_track ? "true" : "false";
   repeatButton.setAttribute("aria-pressed", playbackState.repeat_track ? "true" : "false");
   repeatButton.setAttribute("aria-label", repeatLabel);
@@ -487,6 +509,12 @@ function isActivePlayback(playbackState) {
   return Boolean(
     playbackState?.active_output &&
       ["starting", "playing", "paused"].includes(playbackState.state),
+  );
+}
+
+function isExternalBosePlayback(playbackState) {
+  return Boolean(
+    selectedOutput() === "bose" && playbackState?.bose?.external_playback_active,
   );
 }
 
@@ -798,6 +826,7 @@ trackProgress.addEventListener("change", () => {
 
 outputSelector.addEventListener("change", () => {
   outputSelectionInitialized = true;
+  refreshPlaybackStatus();
 });
 
 settingsButton.addEventListener("click", openSettings);

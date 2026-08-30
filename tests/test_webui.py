@@ -46,8 +46,42 @@ class WebUiTransportTests(unittest.TestCase):
     def test_play_button_is_available_for_stopped_bose_queue_item(self) -> None:
         app_js = APP_JS.read_text(encoding="utf-8")
 
-        self.assertIn("playButton.disabled = !hasTrack || isStarting;", app_js)
+        self.assertIn(
+            "playButton.disabled = externalBose || !hasTrack || isStarting;",
+            app_js,
+        )
         self.assertNotIn("playButton.disabled = !hasTrack || isPlaying", app_js)
+
+    def test_external_bose_metadata_is_rendered_without_queue_ownership(self) -> None:
+        app_js = APP_JS.read_text(encoding="utf-8")
+
+        self.assertIn("function isExternalBosePlayback(playbackState)", app_js)
+        self.assertIn(
+            'playbackState.bose.external_display_name || "Bose"',
+            app_js,
+        )
+        self.assertIn('activeOutput.textContent = "Bose · External";', app_js)
+        self.assertIn('return "External Bose playback";', app_js)
+
+    def test_external_bose_transport_controls_remain_disabled(self) -> None:
+        app_js = APP_JS.read_text(encoding="utf-8")
+
+        self.assertIn(
+            'stopButton.disabled = externalBose || !hasTrack || playbackState.state === "stopped";',
+            app_js,
+        )
+        self.assertIn("previousButton.disabled = externalBose || !hasTrack;", app_js)
+        self.assertIn("nextButton.disabled = externalBose || !hasTrack;", app_js)
+        self.assertIn("repeatButton.disabled = externalBose;", app_js)
+
+    def test_selected_bose_output_requests_rate_limited_external_observation(self) -> None:
+        app_js = APP_JS.read_text(encoding="utf-8")
+
+        self.assertIn(
+            '? "/api/player/status?observe_bose=true"',
+            app_js,
+        )
+        self.assertIn("refreshPlaybackStatus();", app_js)
 
     def test_transport_uses_five_inline_svg_buttons_without_visible_word_labels(self) -> None:
         index_html = INDEX_HTML.read_text(encoding="utf-8")

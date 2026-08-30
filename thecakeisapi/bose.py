@@ -32,6 +32,29 @@ class BoseNowPlayingStatus:
     station_location: str | None = None
     artist: str | None = None
     album: str | None = None
+    track: str | None = None
+    station_name: str | None = None
+    item_name: str | None = None
+
+    @property
+    def display_name(self) -> str | None:
+        return self.track or self.station_name or self.item_name or self.source_label
+
+    @property
+    def source_label(self) -> str | None:
+        normalized_source = (self.source or "").upper()
+        known_labels = {
+            "AUX": "AUX",
+            "LOCAL_INTERNET_RADIO": "Internet Radio",
+            "INTERNET_RADIO": "Internet Radio",
+            "CUSTOM_RADIO": "Custom Radio",
+            "TUNEIN": "TuneIn",
+        }
+        if normalized_source in known_labels:
+            return known_labels[normalized_source]
+        if not self.source:
+            return None
+        return self.source.replace("_", " ").title()
 
     def matches_stream_url(self, expected_stream_url: str) -> bool:
         for location in (self.content_location, self.station_location):
@@ -109,6 +132,8 @@ class BosePlaybackState:
     ownership_stream_url: str | None = None
     ownership_confirmed: bool = False
     external_playback_active: bool = False
+    external_display_name: str | None = None
+    external_source: str | None = None
 
     @property
     def has_app_ownership_context(self) -> bool:
@@ -118,6 +143,8 @@ class BosePlaybackState:
         if self.ownership_stream_url is not None:
             self.ownership_confirmed = True
             self.external_playback_active = False
+            self.external_display_name = None
+            self.external_source = None
 
     def elapsed_seconds(self, now: float | None = None) -> float | None:
         if self.state == "paused":
@@ -149,6 +176,8 @@ class BosePlaybackState:
         self.ownership_stream_url = None
         self.ownership_confirmed = False
         self.external_playback_active = False
+        self.external_display_name = None
+        self.external_source = None
 
     def status_poll_due(
         self,
@@ -183,10 +212,19 @@ class BosePlaybackState:
         self.ownership_stream_url = None
         self.ownership_confirmed = False
         self.external_playback_active = False
+        self.external_display_name = None
+        self.external_source = None
 
-    def externally_active(self, reason: str) -> None:
+    def externally_active(
+        self,
+        reason: str,
+        display_name: str | None = None,
+        source: str | None = None,
+    ) -> None:
         self.externally_stopped(reason)
         self.external_playback_active = True
+        self.external_display_name = display_name
+        self.external_source = source
 
     def pause(self, now: float | None = None) -> None:
         if self.state != "playing":
@@ -459,7 +497,10 @@ def parse_now_playing(raw_text: str) -> BoseNowPlayingStatus:
         source = content_item.attrib.get("source")
 
     play_status = root.attrib.get("playStatus") or root.findtext(".//playStatus")
-    track_name = root.findtext(".//track") or root.findtext(".//itemName")
+    track = root.findtext(".//track")
+    station_name = root.findtext(".//stationName")
+    item_name = root.findtext(".//itemName")
+    track_name = track or item_name
     return BoseNowPlayingStatus(
         source=source,
         play_status=play_status,
@@ -479,6 +520,9 @@ def parse_now_playing(raw_text: str) -> BoseNowPlayingStatus:
         station_location=root.findtext(".//stationLocation"),
         artist=root.findtext(".//artist"),
         album=root.findtext(".//album"),
+        track=track,
+        station_name=station_name,
+        item_name=item_name,
     )
 
 

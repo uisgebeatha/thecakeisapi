@@ -182,7 +182,9 @@
 - [ ] Consider shuffle mode.
 - [x] Replace desktop and mobile playback text controls with compact icon-based controls.
 - [x] Refine the Settings UI for compact desktop and mobile use in v0.4.6.
-- [ ] Resolve Bose physical-preset ownership ambiguity.
+- [x] Resolve Bose physical-preset ownership ambiguity with per-playback URL markers.
+- [x] Display Bose track, station, item, or source metadata for external playback.
+- [ ] Add Bose preset browsing and selection from the web interface.
 - [ ] Add library search.
 - [ ] Investigate USB enclosure disconnect behavior.
 

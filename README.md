@@ -113,6 +113,8 @@ When Bose playback is paused, the app-side timer and auto-advance countdown paus
 
 While Bose is the active output, TheCakeIsAPI checks the existing Bose `/now_playing` endpoint every five seconds. Confirmed standby, stopped playback, or a source change clears stale app-side playback state without sending a playback command. A brief `INVALID_SOURCE` response during a custom-radio track change is treated as a transition rather than an external takeover. A single communication failure leaves playback state unchanged; three consecutive failures mark the speaker unavailable. Auto-advance is suspended while Bose status is uncertain so an externally powered-off speaker is not restarted by the app-side timer.
 
+When Bose is selected in the browser, the same rate-limited status check also displays externally started presets and radio using the best available track, station, item, or source name. External playback remains separate from the app queue and its transport controls stay disabled until TheCakeIsAPI starts a track and establishes ownership.
+
 ## Storage
 
 Music is currently stored on:

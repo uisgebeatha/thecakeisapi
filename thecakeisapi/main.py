@@ -531,9 +531,11 @@ def create_app(
             return _playback_status(app)
 
     @app.get("/api/player/status")
-    def playback_status() -> dict[str, object]:
+    def playback_status(observe_bose: bool = False) -> dict[str, object]:
         with app.state.playback_lock:
             _sync_finished_playback(app)
+            if observe_bose:
+                _observe_external_bose_playback(app)
             return _playback_status(app)
 
     return app
@@ -682,7 +684,11 @@ def _stop_bose_playback(app: FastAPI) -> bool:
             else:
                 if status.source:
                     reason = f"{reason} on {status.source}"
-                playback_state.externally_active(reason)
+                playback_state.externally_active(
+                    reason,
+                    display_name=status.display_name,
+                    source=status.source,
+                )
             app.state.playback_message = reason
             return False
 
@@ -869,7 +875,11 @@ def _poll_bose_playback_state(
             reason = "Bose playback is active externally"
             if status.source:
                 reason = f"{reason} on {status.source}"
-            playback_state.externally_active(reason)
+            playback_state.externally_active(
+                reason,
+                display_name=status.display_name,
+                source=status.source,
+            )
         app.state.playback_message = reason
         return False
 
@@ -901,7 +911,11 @@ def _poll_bose_playback_state(
     if status.source:
         playback_state.record_status_poll_success()
         reason = f"Bose playback is active externally on {status.source}"
-        playback_state.externally_active(reason)
+        playback_state.externally_active(
+            reason,
+            display_name=status.display_name,
+            source=status.source,
+        )
         app.state.playback_message = reason
         return False
 
@@ -917,6 +931,53 @@ def _bose_track_reached_estimated_end(playback_state: BosePlaybackState) -> bool
         return False
     elapsed_seconds = playback_state.elapsed_seconds()
     return elapsed_seconds is not None and elapsed_seconds >= playback_state.duration_seconds
+
+
+def _observe_external_bose_playback(
+    app: FastAPI,
+    now_monotonic: float | None = None,
+) -> None:
+    playback_state = app.state.bose_playback_state
+    if app.state.bose_now_playing_client is None:
+        return
+    if (
+        app.state.active_output == "bose"
+        and playback_state.state in {"starting", "playing", "paused"}
+    ):
+        return
+    if not playback_state.status_poll_due(
+        app.state.settings.bose_state_poll_interval_seconds,
+        now_monotonic,
+    ):
+        return
+
+    playback_state.record_status_poll_started(now_monotonic)
+    try:
+        status = app.state.bose_now_playing_client.fetch_status()
+    except BosePlaybackError:
+        _record_external_bose_poll_failure(playback_state)
+        return
+
+    if status.appears_to_be_invalid_source or not status.source:
+        _record_external_bose_poll_failure(playback_state)
+        return
+
+    playback_state.record_status_poll_success()
+    if status.appears_to_be_stopped:
+        playback_state.externally_stopped("Bose playback stopped externally")
+        return
+
+    playback_state.externally_active(
+        "Bose playback is active externally",
+        display_name=status.display_name,
+        source=status.source,
+    )
+
+
+def _record_external_bose_poll_failure(playback_state: BosePlaybackState) -> None:
+    if playback_state.record_status_poll_failure() < BOSE_STATUS_FAILURE_THRESHOLD:
+        return
+    playback_state.externally_stopped("Bose speaker is unavailable")
 
 
 def _record_bose_status_poll_failure(app: FastAPI, reason: str) -> None:
@@ -979,6 +1040,13 @@ def _playback_status(app: FastAPI) -> dict[str, object]:
                 app.state.bose_playback_state.last_confirmed_status_timestamp
             ),
             "status_poll_failures": app.state.bose_playback_state.status_poll_failures,
+            "external_playback_active": (
+                app.state.bose_playback_state.external_playback_active
+            ),
+            "external_display_name": (
+                app.state.bose_playback_state.external_display_name
+            ),
+            "external_source": app.state.bose_playback_state.external_source,
         },
     }
 
