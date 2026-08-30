@@ -47,7 +47,7 @@ async function loadApp() {
     const [healthResponse, browseResponse, playbackResponse] = await Promise.all([
       fetch("/api/health"),
       fetchBrowse(currentPath()),
-      fetch("/api/player/status"),
+      fetch(playbackStatusUrl()),
     ]);
 
     if (!healthResponse.ok) {
@@ -319,15 +319,18 @@ async function sendTransportCommand(endpoint) {
 
 async function refreshPlaybackStatus() {
   try {
-    const statusUrl = selectedOutput() === "bose"
-      ? "/api/player/status?observe_bose=true"
-      : "/api/player/status";
-    const response = await fetch(statusUrl);
+    const response = await fetch(playbackStatusUrl());
     await renderPlaybackResponse(response);
   } catch (error) {
     playbackStatus.textContent = "Playback status is unavailable.";
     playbackStatus.dataset.state = "error";
   }
+}
+
+function playbackStatusUrl() {
+  return selectedOutput() === "bose"
+    ? "/api/player/status?observe_bose=true"
+    : "/api/player/status";
 }
 
 async function renderPlaybackResponse(response) {

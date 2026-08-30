@@ -76,12 +76,27 @@ class WebUiTransportTests(unittest.TestCase):
 
     def test_selected_bose_output_requests_rate_limited_external_observation(self) -> None:
         app_js = APP_JS.read_text(encoding="utf-8")
+        index_html = INDEX_HTML.read_text(encoding="utf-8")
 
         self.assertIn(
             '? "/api/player/status?observe_bose=true"',
             app_js,
         )
+        self.assertEqual(app_js.count("fetch(playbackStatusUrl())"), 2)
         self.assertIn("refreshPlaybackStatus();", app_js)
+        self.assertIn(
+            "/static/app.js?v=__THECAKEISAPI_VERSION__&state=external-bose",
+            index_html,
+        )
+
+    def test_mobile_now_playing_keeps_external_title_and_output_visible(self) -> None:
+        styles_css = STYLES_CSS.read_text(encoding="utf-8")
+        mobile_rules = styles_css.split("@media (max-width: 760px)", 1)[1]
+        mobile_rules = mobile_rules.split("@media (max-width: 420px)", 1)[0]
+
+        self.assertIn(".now-playing {", mobile_rules)
+        self.assertIn("grid-template-columns: auto minmax(0, 1fr);", mobile_rules)
+        self.assertNotIn("display: none", mobile_rules)
 
     def test_transport_uses_five_inline_svg_buttons_without_visible_word_labels(self) -> None:
         index_html = INDEX_HTML.read_text(encoding="utf-8")
