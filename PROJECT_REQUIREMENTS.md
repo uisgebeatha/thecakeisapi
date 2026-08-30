@@ -73,7 +73,7 @@ Build a minimal proof of concept:
 - Desktop and mobile playback controls use the same compact inline SVG icon vocabulary as of v0.4.5.
 - Play and Pause share one state-aware primary control; repeat state remains visibly selected and accessible.
 - The Bose / Pi 4 Local selector remains segmented but uses a compact presentation.
-- Further Settings UI refinement remains deferred.
+- The v0.4.6 Settings dialog keeps Configuration, read-only Component Status, and Save/restart actions visually distinct on desktop and mobile.
 
 ## Current Deployment Decisions
 

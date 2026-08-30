@@ -208,7 +208,7 @@ class WebUiTransportTests(unittest.TestCase):
         app_js = APP_JS.read_text(encoding="utf-8")
         styles_css = STYLES_CSS.read_text(encoding="utf-8")
 
-        self.assertIn('__version__ = "0.4.5"', package_init)
+        self.assertIn('__version__ = "0.4.6"', package_init)
         self.assertIn("version=__version__", main_py)
         self.assertIn('"version": __version__', main_py)
         self.assertNotIn("0.4.0", index_html)
@@ -320,6 +320,29 @@ class WebUiTransportTests(unittest.TestCase):
         self.assertNotIn('name="music_root"', index_html)
         self.assertNotIn('name="bose_api_port"', index_html)
 
+    def test_settings_dialog_separates_configuration_status_and_actions(self) -> None:
+        index_html = INDEX_HTML.read_text(encoding="utf-8")
+
+        section_positions = [
+            index_html.index(f'id="{heading_id}"')
+            for heading_id in (
+                "configuration-heading",
+                "component-status-heading",
+                "settings-actions-heading",
+            )
+        ]
+        self.assertEqual(section_positions, sorted(section_positions))
+        self.assertIn(
+            'id="settings-save-button" class="settings-save-button" '
+            'type="submit" form="settings-form"',
+            index_html,
+        )
+        self.assertIn(
+            'class="settings-field settings-field-wide" '
+            'for="setting-soundtouch-cli-command"',
+            index_html,
+        )
+
     def test_settings_ui_uses_explicit_settings_and_status_endpoints(self) -> None:
         app_js = APP_JS.read_text(encoding="utf-8")
 
@@ -334,11 +357,48 @@ class WebUiTransportTests(unittest.TestCase):
         styles_css = STYLES_CSS.read_text(encoding="utf-8")
 
         self.assertIn(".settings-dialog", styles_css)
-        self.assertIn("width: min(44rem, calc(100% - 1.5rem));", styles_css)
+        self.assertIn("width: min(42rem, calc(100% - 1.5rem));", styles_css)
         self.assertRegex(
             styles_css,
             r"@media \(max-width: 760px\)[\s\S]*?\.settings-fields\s*\{"
             r"[^}]*grid-template-columns: minmax\(0, 1fr\);",
+        )
+        self.assertRegex(
+            styles_css,
+            r"@media \(max-width: 760px\)[\s\S]*?\.settings-dialog\s*\{"
+            r"[^}]*max-width: calc\(100% - 0\.75rem\);",
+        )
+
+    def test_settings_sections_use_compact_distinct_visual_styles(self) -> None:
+        styles_css = STYLES_CSS.read_text(encoding="utf-8")
+
+        self.assertRegex(
+            styles_css,
+            r"\.settings-fields\s*\{[^}]*"
+            r"grid-template-columns: repeat\(2, minmax\(0, 1fr\)\);",
+        )
+        self.assertRegex(
+            styles_css,
+            r"\.settings-field-wide\s*\{[^}]*grid-column: 1 / -1;",
+        )
+        self.assertRegex(
+            styles_css,
+            r"\.component-status-list > div\s*\{[^}]*display: grid;"
+            r"[^}]*grid-template-columns: minmax\(7rem, 0\.65fr\) minmax\(0, 1fr\);",
+        )
+        self.assertRegex(
+            styles_css,
+            r"\.settings-action-section\s*\{[^}]*background: var\(--surface-subtle\);",
+        )
+        self.assertRegex(
+            styles_css,
+            r"\.settings-dialog button:focus-visible,[\s\S]*?"
+            r"outline-color: color-mix\(in srgb, var\(--accent\) 65%, transparent\);",
+        )
+        self.assertRegex(
+            styles_css,
+            r"@media \(max-width: 760px\)[\s\S]*?\.settings-field-wide\s*\{"
+            r"[^}]*grid-column: auto;",
         )
 
     def test_settings_restart_requires_confirmation_and_explains_playback_stop(self) -> None:

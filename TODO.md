@@ -181,7 +181,7 @@
 - [ ] Consider volume control.
 - [ ] Consider shuffle mode.
 - [x] Replace desktop and mobile playback text controls with compact icon-based controls.
-- [ ] Further refine the Settings UI.
+- [x] Refine the Settings UI for compact desktop and mobile use in v0.4.6.
 - [ ] Resolve Bose physical-preset ownership ambiguity.
 - [ ] Add library search.
 - [ ] Investigate USB enclosure disconnect behavior.

@@ -120,7 +120,7 @@
       </header>
 
       <section class="settings-section" aria-labelledby="configuration-heading">
-        <h3 id="configuration-heading">Playback Configuration</h3>
+        <h3 id="configuration-heading">Configuration</h3>
         <form id="settings-form">
           <div class="settings-fields">
             <label class="settings-field" for="setting-bose-speaker-ip">
@@ -131,7 +131,7 @@
               <span>AfterTouch base URL</span>
               <input id="setting-aftertouch-base-url" name="aftertouch_base_url" type="url" autocomplete="off" spellcheck="false" placeholder="http://bose-controller.local">
             </label>
-            <label class="settings-field" for="setting-soundtouch-cli-command">
+            <label class="settings-field settings-field-wide" for="setting-soundtouch-cli-command">
               <span>soundtouch-cli executable</span>
               <input id="setting-soundtouch-cli-command" name="soundtouch_cli_command" type="text" autocomplete="off" spellcheck="false" required placeholder="soundtouch-cli">
             </label>
@@ -144,18 +144,7 @@
               <input id="setting-bose-poll-interval" name="bose_state_poll_interval_seconds" type="number" min="1" max="300" step="0.5" inputmode="decimal" required>
             </label>
           </div>
-          <div class="settings-actions">
-            <button id="settings-save-button" class="settings-save-button" type="submit">Save Settings</button>
-            <p id="settings-message" class="message" aria-live="polite"></p>
-          </div>
         </form>
-        <div id="settings-restart-panel" class="settings-restart-panel" hidden>
-          <div>
-            <strong>Restart required</strong>
-            <p>Playback will stop briefly while TheCakeIsAPI restarts.</p>
-          </div>
-          <button id="settings-restart-button" class="settings-restart-button" type="button">Restart TheCakeIsAPI</button>
-        </div>
       </section>
 
       <section class="settings-section component-status-section" aria-labelledby="component-status-heading">
@@ -174,6 +163,21 @@
             <dd data-component-id="soundtouch_cli">Loading...</dd>
           </div>
         </dl>
+      </section>
+
+      <section class="settings-section settings-action-section" aria-labelledby="settings-actions-heading">
+        <h3 id="settings-actions-heading">Save &amp; Restart</h3>
+        <div class="settings-actions">
+          <button id="settings-save-button" class="settings-save-button" type="submit" form="settings-form">Save Settings</button>
+          <p id="settings-message" class="message" aria-live="polite"></p>
+        </div>
+        <div id="settings-restart-panel" class="settings-restart-panel" hidden>
+          <div>
+            <strong>Restart required</strong>
+            <p>Playback will stop briefly while TheCakeIsAPI restarts.</p>
+          </div>
+          <button id="settings-restart-button" class="settings-restart-button" type="button">Restart TheCakeIsAPI</button>
+        </div>
       </section>
     </dialog>
   </body>
