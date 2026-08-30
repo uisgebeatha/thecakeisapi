@@ -69,6 +69,49 @@ class WebUiTransportTests(unittest.TestCase):
         for visible_label in ("Play", "Pause", "Stop", "Previous", "Next", "Repeat Track"):
             self.assertNotIn(f">{visible_label}<", transport_html)
 
+    def test_transport_order_places_play_pause_in_the_center(self) -> None:
+        index_html = INDEX_HTML.read_text(encoding="utf-8")
+        transport_html = index_html.split(
+            '<section class="transport" aria-label="Playback controls">',
+            1,
+        )[1].split("</section>", 1)[0]
+
+        control_positions = [
+            transport_html.index(f'id="{button_id}"')
+            for button_id in (
+                "previous-button",
+                "stop-button",
+                "play-button",
+                "next-button",
+                "repeat-button",
+            )
+        ]
+        self.assertEqual(control_positions, sorted(control_positions))
+
+    def test_transport_accent_states_use_green_without_pale_or_blue_fill(self) -> None:
+        styles_css = STYLES_CSS.read_text(encoding="utf-8")
+
+        self.assertRegex(
+            styles_css,
+            r"\.control-button\.primary,\s*"
+            r"\.control-button\.primary:hover,\s*"
+            r"\.control-button\.primary:focus-visible,\s*"
+            r"\.control-button\.primary:active\s*\{[^}]*"
+            r"border-color: #5dad82;[^}]*background: #20352b;[^}]*color: #8fd8b5;",
+        )
+        self.assertRegex(
+            styles_css,
+            r"\.control-button\[data-active=\"true\"\][\s\S]*?"
+            r"border-color: var\(--accent\);[^}]*"
+            r"background: var\(--accent-soft\);[^}]*color: var\(--accent\);",
+        )
+        for removed_color in ("#d7eadf", "#436aa8", "#e8eff8", "#264c87", "#84a8df", "#24344d", "#bed6fa"):
+            self.assertNotIn(removed_color, styles_css)
+        self.assertIn(
+            "outline-color: color-mix(in srgb, var(--accent) 65%, transparent);",
+            styles_css,
+        )
+
     def test_transport_icons_keep_accessible_labels_and_repeat_state(self) -> None:
         index_html = INDEX_HTML.read_text(encoding="utf-8")
         app_js = APP_JS.read_text(encoding="utf-8")
@@ -199,6 +242,7 @@ class WebUiTransportTests(unittest.TestCase):
             r"\.output-option-label\s*\{[^}]*min-height: 2\.25rem;",
         )
         self.assertIn("--player-height: 13.5rem;", styles_css)
+        self.assertIn("--player-height: 9.25rem;", styles_css)
         self.assertIn("overflow-x: hidden;", styles_css)
 
     def test_mobile_header_and_library_navigation_are_sticky(self) -> None:
@@ -215,6 +259,51 @@ class WebUiTransportTests(unittest.TestCase):
             r"\.browser-header\s*\{[^}]*position: sticky;[^}]*top: 3\.25rem;",
         )
         self.assertIn("position: fixed;", styles_css)
+
+    def test_desktop_keeps_header_and_queue_while_library_scrolls(self) -> None:
+        styles_css = STYLES_CSS.read_text(encoding="utf-8")
+        desktop_rules = styles_css.split("@media (min-width: 761px)", 1)[1]
+        desktop_rules = desktop_rules.split("@media (max-width: 1040px)", 1)[0]
+
+        self.assertRegex(
+            desktop_rules,
+            r"body\s*\{[^}]*overflow-y: hidden;",
+        )
+        self.assertRegex(
+            desktop_rules,
+            r"\.shell\s*\{[^}]*grid-template-rows: auto minmax\(0, 1fr\);"
+            r"[^}]*height: 100dvh;[^}]*overflow: hidden;",
+        )
+        self.assertRegex(
+            desktop_rules,
+            r"\.topbar\s*\{[^}]*position: sticky;[^}]*top: 0;",
+        )
+        self.assertRegex(
+            desktop_rules,
+            r"\.browser\s*\{[^}]*overflow-y: auto;",
+        )
+        self.assertRegex(
+            desktop_rules,
+            r"\.playlist-panel\s*\{[^}]*position: sticky;[^}]*overflow: hidden;",
+        )
+        self.assertRegex(
+            desktop_rules,
+            r"\.queue-list\s*\{[^}]*overflow-y: auto;",
+        )
+
+    def test_mobile_queue_keeps_document_scroll_behavior(self) -> None:
+        styles_css = STYLES_CSS.read_text(encoding="utf-8")
+        mobile_rules = styles_css.split("@media (max-width: 760px)", 1)[1]
+        mobile_rules = mobile_rules.split("@media (max-width: 420px)", 1)[0]
+
+        self.assertNotRegex(
+            mobile_rules,
+            r"\.playlist-panel\s*\{[^}]*(?:position: sticky|overflow-y: auto);",
+        )
+        self.assertNotRegex(
+            mobile_rules,
+            r"\.queue-list\s*\{[^}]*overflow-y: auto;",
+        )
 
     def test_settings_dialog_exposes_only_supported_editable_fields(self) -> None:
         index_html = INDEX_HTML.read_text(encoding="utf-8")

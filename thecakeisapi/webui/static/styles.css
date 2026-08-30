@@ -743,9 +743,6 @@ button.entry-details-button {
 .control-button.primary {
   width: 3.5rem;
   height: 3.5rem;
-  border-color: #33845b;
-  background: var(--accent-soft);
-  color: #216343;
 }
 
 .transport-icon {
@@ -785,20 +782,31 @@ button.entry-details-button {
   stroke-width: 1.8;
 }
 
-.control-button[data-active="true"] {
-  border-color: #436aa8;
-  background: #e8eff8;
-  color: #264c87;
-}
-
 .control-button:hover,
 .control-button:focus-visible {
   background: #e8ebed;
 }
 
+.transport-button:focus-visible {
+  outline-color: color-mix(in srgb, var(--accent) 65%, transparent);
+}
+
+.control-button[data-active="true"],
+.control-button[data-active="true"]:hover,
+.control-button[data-active="true"]:focus-visible,
+.control-button[data-active="true"]:active {
+  border-color: var(--accent);
+  background: var(--accent-soft);
+  color: var(--accent);
+}
+
+.control-button.primary,
 .control-button.primary:hover,
-.control-button.primary:focus-visible {
-  background: #d7eadf;
+.control-button.primary:focus-visible,
+.control-button.primary:active {
+  border-color: #5dad82;
+  background: #20352b;
+  color: #8fd8b5;
 }
 
 .control-button:disabled {
@@ -848,9 +856,66 @@ button.entry-details-button {
   }
 }
 
+@media (min-width: 761px) {
+  html,
+  body {
+    height: 100%;
+  }
+
+  body {
+    overflow-y: hidden;
+  }
+
+  .shell {
+    display: grid;
+    grid-template-rows: auto minmax(0, 1fr);
+    height: 100vh;
+    height: 100dvh;
+    min-height: 0;
+    overflow: hidden;
+  }
+
+  .topbar {
+    position: sticky;
+    top: 0;
+    z-index: 20;
+    box-shadow: 0 0.15rem 0.35rem rgba(20, 24, 28, 0.08);
+  }
+
+  .content {
+    height: auto;
+    min-height: 0;
+    overflow: hidden;
+  }
+
+  .browser {
+    min-height: 0;
+    overflow-y: auto;
+    overscroll-behavior-y: contain;
+    scrollbar-gutter: stable;
+  }
+
+  .playlist-panel {
+    position: sticky;
+    top: 0;
+    align-self: stretch;
+    display: flex;
+    flex-direction: column;
+    min-height: 0;
+    overflow: hidden;
+  }
+
+  .queue-list {
+    min-height: 0;
+    overflow-y: auto;
+    overscroll-behavior-y: contain;
+    scrollbar-gutter: stable;
+  }
+}
+
 @media (max-width: 1040px) {
   :root {
-    --player-height: 8.5rem;
+    --player-height: 9.25rem;
   }
 
   .player-bar {
@@ -1080,20 +1145,26 @@ button.entry-details-button {
     color: #a9e5c8;
   }
 
-  .control-button.primary {
-    border-color: #5dad82;
-    background: var(--accent-soft);
-    color: #8fd8b5;
-  }
-
-  .control-button[data-active="true"] {
-    border-color: #84a8df;
-    background: #24344d;
-    color: #bed6fa;
-  }
-
   .control-button:hover,
   .control-button:focus-visible {
     background: #333840;
+  }
+
+  .control-button[data-active="true"],
+  .control-button[data-active="true"]:hover,
+  .control-button[data-active="true"]:focus-visible,
+  .control-button[data-active="true"]:active {
+    border-color: var(--accent);
+    background: var(--accent-soft);
+    color: var(--accent);
+  }
+
+  .control-button.primary,
+  .control-button.primary:hover,
+  .control-button.primary:focus-visible,
+  .control-button.primary:active {
+    border-color: #5dad82;
+    background: #20352b;
+    color: #8fd8b5;
   }
 }
