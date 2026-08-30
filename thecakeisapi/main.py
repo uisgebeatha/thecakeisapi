@@ -721,8 +721,17 @@ def _monitor_playback(app: FastAPI) -> None:
 
 
 def _sync_bose_playback(app: FastAPI) -> None:
-    _poll_bose_playback_state(app)
-    if app.state.bose_playback_state.status_poll_failures > 0:
+    transition_due = app.state.bose_playback_state.should_auto_advance(
+        app.state.settings.bose_auto_advance_buffer_seconds,
+    )
+    transition_source_gap = _poll_bose_playback_state(
+        app,
+        allow_app_transition_source_gap=transition_due,
+    )
+    if (
+        app.state.bose_playback_state.status_poll_failures > 0
+        and not transition_source_gap
+    ):
         return
 
     if not app.state.bose_playback_state.should_auto_advance(
@@ -762,30 +771,34 @@ def _sync_bose_playback(app: FastAPI) -> None:
 def _poll_bose_playback_state(
     app: FastAPI,
     now_monotonic: float | None = None,
-) -> None:
+    allow_app_transition_source_gap: bool = False,
+) -> bool:
+    """Return whether an expected app-initiated transition gap was observed."""
     playback_state = app.state.bose_playback_state
     if app.state.active_output != "bose":
-        return
+        return False
     if playback_state.state not in {"starting", "playing", "paused"}:
-        return
+        return False
     if app.state.bose_now_playing_client is None:
-        return
+        return False
     if not playback_state.status_poll_due(
         app.state.settings.bose_state_poll_interval_seconds,
         now_monotonic,
     ):
-        return
+        return False
 
     playback_state.record_status_poll_started(now_monotonic)
     try:
         status = app.state.bose_now_playing_client.fetch_status()
     except BosePlaybackError:
         _record_bose_status_poll_failure(app, "Bose speaker is unavailable")
-        return
+        return False
 
     if status.appears_to_be_invalid_source:
+        if allow_app_transition_source_gap:
+            return True
         _record_bose_status_poll_failure(app, "Bose source transition did not settle")
-        return
+        return False
 
     if status.appears_to_be_stopped:
         playback_state.record_status_poll_success()
@@ -797,11 +810,11 @@ def _poll_bose_playback_state(
                 or _bose_track_reached_estimated_end(playback_state)
             )
         ):
-            return
+            return False
         reason = "Bose playback stopped externally"
         playback_state.externally_stopped(reason)
         app.state.playback_message = reason
-        return
+        return False
 
     if status.appears_to_be_custom_radio:
         playback_state.record_status_poll_success()
@@ -809,16 +822,20 @@ def _poll_bose_playback_state(
             playback_state.state = "playing"
             playback_state.confirmed_start_timestamp = _current_timestamp()
             app.state.playback_message = f"Playing on Bose: {playback_state.track_name}"
-        return
+        return False
 
     if status.source:
         playback_state.record_status_poll_success()
         reason = f"Bose source changed externally to {status.source}"
         playback_state.externally_stopped(reason)
         app.state.playback_message = reason
-        return
+        return False
+
+    if allow_app_transition_source_gap:
+        return True
 
     _record_bose_status_poll_failure(app, "Bose status could not be confirmed")
+    return False
 
 
 def _bose_track_reached_estimated_end(playback_state: BosePlaybackState) -> bool:

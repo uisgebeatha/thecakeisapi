@@ -756,6 +756,98 @@ class BoseStatePollingTests(unittest.TestCase):
             self.assertEqual(app.state.playback_queue.current().path, "second.mp3")
             self.assertEqual(app.state.bose_client.played_names, ["second.mp3"])
 
+    def test_invalid_source_at_auto_advance_boundary_starts_next_track(self) -> None:
+        with temp_music_app() as app:
+            app.state.playback_queue.set_tracks(
+                [
+                    QueueTrack(path="first.mp3", name="first.mp3"),
+                    QueueTrack(path="second.mp3", name="second.mp3"),
+                ],
+                "first.mp3",
+            )
+            app.state.active_output = "bose"
+            app.state.bose_playback_state = BosePlaybackState(
+                track_path="first.mp3",
+                track_name="first.mp3",
+                state="playing",
+                confirmed_start_timestamp=time.time() - 3,
+                duration_seconds=1.0,
+            )
+            app.state.bose_now_playing_client = FakeNowPlayingClient(
+                [
+                    '<nowPlaying source="INVALID_SOURCE"></nowPlaying>',
+                    '<nowPlaying source="INVALID_SOURCE"></nowPlaying>',
+                    '<nowPlaying source="LOCAL_INTERNET_RADIO">'
+                    '<track>Second</track></nowPlaying>',
+                ],
+            )
+
+            _sync_bose_playback(app)
+
+            self.assertEqual(app.state.playback_queue.current().path, "second.mp3")
+            self.assertEqual(app.state.bose_client.played_names, ["second.mp3"])
+            self.assertEqual(app.state.bose_playback_state.state, "playing")
+            self.assertEqual(app.state.bose_playback_state.status_poll_failures, 0)
+
+    def test_missing_source_at_auto_advance_boundary_starts_next_track(self) -> None:
+        with temp_music_app() as app:
+            app.state.playback_queue.set_tracks(
+                [
+                    QueueTrack(path="first.mp3", name="first.mp3"),
+                    QueueTrack(path="second.mp3", name="second.mp3"),
+                ],
+                "first.mp3",
+            )
+            app.state.active_output = "bose"
+            app.state.bose_playback_state = BosePlaybackState(
+                track_path="first.mp3",
+                track_name="first.mp3",
+                state="playing",
+                confirmed_start_timestamp=time.time() - 3,
+                duration_seconds=1.0,
+            )
+            app.state.bose_now_playing_client = FakeNowPlayingClient(
+                [
+                    "<nowPlaying></nowPlaying>",
+                    "<nowPlaying></nowPlaying>",
+                    '<nowPlaying source="LOCAL_INTERNET_RADIO">'
+                    '<track>Second</track></nowPlaying>',
+                ],
+            )
+
+            _sync_bose_playback(app)
+
+            self.assertEqual(app.state.playback_queue.current().path, "second.mp3")
+            self.assertEqual(app.state.bose_client.played_names, ["second.mp3"])
+            self.assertEqual(app.state.bose_playback_state.state, "playing")
+
+    def test_expired_invalid_source_transition_clears_playback_state(self) -> None:
+        with temp_music_app() as app:
+            app.state.active_output = "bose"
+            app.state.bose_now_playing_client = FakeNowPlayingClient(
+                [
+                    '<nowPlaying source="LOCAL_INTERNET_RADIO">'
+                    '<track>First</track></nowPlaying>',
+                    '<nowPlaying source="INVALID_SOURCE"></nowPlaying>',
+                ],
+            )
+
+            _play_bose_track(
+                app,
+                QueueTrack(path="second.mp3", name="second.mp3"),
+            )
+
+            self.assertEqual(app.state.bose_playback_state.state, "starting")
+            self.assertIn("confirmation timed out", app.state.bose_playback_state.warning)
+
+            _poll_bose_playback_state(app, now_monotonic=10.0)
+            _poll_bose_playback_state(app, now_monotonic=15.0)
+            _poll_bose_playback_state(app, now_monotonic=20.0)
+
+            self.assertEqual(app.state.bose_playback_state.state, "stopped")
+            self.assertEqual(app.state.bose_playback_state.status_poll_failures, 3)
+            self.assertIn("transition did not settle", app.state.playback_message)
+
     def test_temporary_bose_query_failure_does_not_force_stop(self) -> None:
         with temp_music_app() as app:
             app.state.active_output = "bose"
