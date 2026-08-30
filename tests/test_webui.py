@@ -515,7 +515,7 @@ class WebUiBosePresetTests(unittest.TestCase):
         self.assertIn('aria-label="Bose Presets"', index_html)
         self.assertIn('<svg class="topbar-button-icon"', index_html)
         self.assertIn(
-            "/static/styles.css?v=__THECAKEISAPI_VERSION__&state=bose-panel-layout",
+            "/static/styles.css?v=__THECAKEISAPI_VERSION__&state=bose-panel-geometry",
             index_html,
         )
         self.assertIn(
@@ -597,6 +597,11 @@ class WebUiBosePresetTests(unittest.TestCase):
             "boseCurrentItemTitle.textContent = currentBoseItemTitle(playbackState);",
             app_js,
         )
+        self.assertRegex(
+            STYLES_CSS.read_text(encoding="utf-8"),
+            r"\.bose-current-item\s*\{[^}]*display: flex;[^}]*"
+            r"justify-content: center;",
+        )
 
     def test_backdrop_click_is_consumed_before_dialog_closes(self) -> None:
         app_js = APP_JS.read_text(encoding="utf-8")
@@ -624,17 +629,26 @@ class WebUiBosePresetTests(unittest.TestCase):
         self.assertRegex(
             styles_css,
             r"\.bose-future-controls\s*\{[^}]*"
-            r"grid-template-rows: repeat\(2, minmax\(4\.2rem, auto\)\);[^}]*"
+            r"grid-template-rows: repeat\(2, minmax\(4\.8rem, auto\)\);[^}]*"
             r"gap: 0\.5rem;",
+        )
+        self.assertRegex(
+            styles_css,
+            r"\.bose-future-control:first-child\s*\{[^}]*align-self: end;",
+        )
+        self.assertRegex(
+            styles_css,
+            r"\.bose-future-control:last-child\s*\{[^}]*align-self: start;",
         )
         self.assertRegex(
             styles_css,
             r"\.bose-preset-grid\s*\{[^}]*"
             r"grid-template-columns: repeat\(3, minmax\(0, 1fr\)\);[^}]*"
-            r"grid-template-rows: repeat\(2, minmax\(4\.2rem, auto\)\);",
+            r"grid-template-rows: repeat\(2, minmax\(4\.8rem, auto\)\);",
         )
         self.assertIn("width: calc(100% - 0.5rem);", mobile_rules)
         self.assertIn("grid-template-columns: 2.75rem minmax(0, 1fr) 2.75rem;", mobile_rules)
+        self.assertIn("grid-template-rows: repeat(2, minmax(4.15rem, auto));", mobile_rules)
         self.assertIn("gap: 0.2rem;", mobile_rules)
         self.assertIn("overflow-wrap: anywhere;", styles_css)
         self.assertIn("-webkit-line-clamp: 2;", styles_css)

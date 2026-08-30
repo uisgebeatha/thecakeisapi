@@ -196,9 +196,17 @@ h1 {
 
 .bose-future-controls {
   display: grid;
-  grid-template-rows: repeat(2, minmax(4.2rem, auto));
+  grid-template-rows: repeat(2, minmax(4.8rem, auto));
   place-items: center;
   gap: 0.5rem;
+}
+
+.bose-future-control:first-child {
+  align-self: end;
+}
+
+.bose-future-control:last-child {
+  align-self: start;
 }
 
 .bose-future-control {
@@ -241,7 +249,7 @@ h1 {
 .bose-preset-grid {
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));
-  grid-template-rows: repeat(2, minmax(4.2rem, auto));
+  grid-template-rows: repeat(2, minmax(4.8rem, auto));
   gap: 0.5rem;
   min-width: 0;
 }
@@ -252,7 +260,7 @@ h1 {
   place-items: center;
   gap: 0.15rem;
   min-width: 0;
-  min-height: 4.2rem;
+  min-height: 4.8rem;
   border: 1px solid #929ba6;
   border-radius: 0.45rem;
   padding: 0.35rem 0.25rem;
@@ -302,9 +310,9 @@ h1 {
 }
 
 .bose-current-item {
-  display: grid;
-  grid-template-columns: auto minmax(0, 1fr);
+  display: flex;
   align-items: baseline;
+  justify-content: center;
   gap: 0.6rem;
   min-width: 0;
   margin-top: 0.75rem;
@@ -313,12 +321,15 @@ h1 {
 }
 
 .bose-current-item span {
+  flex: 0 0 auto;
   color: var(--muted);
   font-size: 0.72rem;
 }
 
 .bose-current-item strong {
+  flex: 0 1 auto;
   min-width: 0;
+  max-width: calc(100% - 6rem);
   overflow: hidden;
   font-size: 0.82rem;
   font-weight: 700;
@@ -1243,12 +1254,12 @@ button.entry-details-button {
 
   .bose-future-controls,
   .bose-preset-grid {
-    grid-template-rows: repeat(2, minmax(3.8rem, auto));
+    grid-template-rows: repeat(2, minmax(4.15rem, auto));
     gap: 0.35rem;
   }
 
   .bose-preset-button {
-    min-height: 3.8rem;
+    min-height: 4.15rem;
     padding-right: 0.15rem;
     padding-left: 0.15rem;
   }
