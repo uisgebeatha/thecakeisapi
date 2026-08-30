@@ -458,7 +458,7 @@ class BoseNowPlayingClient:
         key_name = f"PRESET_{preset_id}"
         for key_state in ("press", "release"):
             body = (
-                f'<key state="{key_state}" sender="TheCakeIsAPI">'
+                f'<key state="{key_state}" sender="Gabbo">'
                 f"{key_name}</key>"
             ).encode("utf-8")
             request = Request(

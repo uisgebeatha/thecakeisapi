@@ -465,11 +465,11 @@ class BosePresetTests(unittest.TestCase):
             self.assertEqual(press_request.get_method(), "POST")
             self.assertEqual(
                 press_request.data.decode("utf-8"),
-                f'<key state="press" sender="TheCakeIsAPI">PRESET_{preset_id}</key>',
+                f'<key state="press" sender="Gabbo">PRESET_{preset_id}</key>',
             )
             self.assertEqual(
                 release_request.data.decode("utf-8"),
-                f'<key state="release" sender="TheCakeIsAPI">PRESET_{preset_id}</key>',
+                f'<key state="release" sender="Gabbo">PRESET_{preset_id}</key>',
             )
 
     def test_invalid_preset_id_is_rejected_before_transport(self) -> None:
