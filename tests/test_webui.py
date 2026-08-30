@@ -120,7 +120,7 @@ class WebUiTransportTests(unittest.TestCase):
         app_js = APP_JS.read_text(encoding="utf-8")
         styles_css = STYLES_CSS.read_text(encoding="utf-8")
 
-        self.assertIn('__version__ = "0.4.2"', package_init)
+        self.assertIn('__version__ = "0.4.3"', package_init)
         self.assertIn("version=__version__", main_py)
         self.assertIn('"version": __version__', main_py)
         self.assertNotIn("0.4.0", index_html)
@@ -148,6 +148,42 @@ class WebUiTransportTests(unittest.TestCase):
             r"\.browser-header\s*\{[^}]*position: sticky;[^}]*top: 3\.25rem;",
         )
         self.assertIn("position: fixed;", styles_css)
+
+    def test_settings_dialog_exposes_only_supported_editable_fields(self) -> None:
+        index_html = INDEX_HTML.read_text(encoding="utf-8")
+
+        self.assertIn('id="settings-dialog"', index_html)
+        for field_name in (
+            "bose_speaker_ip",
+            "aftertouch_base_url",
+            "soundtouch_cli_command",
+            "public_base_url",
+            "bose_state_poll_interval_seconds",
+        ):
+            self.assertIn(f'name="{field_name}"', index_html)
+        self.assertNotIn('name="music_root"', index_html)
+        self.assertNotIn('name="bose_api_port"', index_html)
+
+    def test_settings_ui_uses_explicit_settings_and_status_endpoints(self) -> None:
+        app_js = APP_JS.read_text(encoding="utf-8")
+
+        self.assertIn('fetch("/api/settings")', app_js)
+        self.assertIn('fetch("/api/settings", {', app_js)
+        self.assertIn('method: "PUT"', app_js)
+        self.assertIn('fetch("/api/components/status")', app_js)
+        self.assertIn("data.restart_required", app_js)
+        self.assertIn("settingsMessage.textContent = data.message;", app_js)
+
+    def test_settings_dialog_is_phone_responsive(self) -> None:
+        styles_css = STYLES_CSS.read_text(encoding="utf-8")
+
+        self.assertIn(".settings-dialog", styles_css)
+        self.assertIn("width: min(44rem, calc(100% - 1.5rem));", styles_css)
+        self.assertRegex(
+            styles_css,
+            r"@media \(max-width: 760px\)[\s\S]*?\.settings-fields\s*\{"
+            r"[^}]*grid-template-columns: minmax\(0, 1fr\);",
+        )
 
 
 if __name__ == "__main__":

@@ -4,7 +4,7 @@ from threading import Event, Lock, Thread
 from fastapi import FastAPI, HTTPException
 from fastapi.responses import FileResponse, HTMLResponse
 from fastapi.staticfiles import StaticFiles
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field
 
 from . import __version__
 from .bose import (
@@ -13,6 +13,13 @@ from .bose import (
     BosePlaybackState,
     SoundTouchCliClient,
     build_library_stream_url,
+)
+from .component_status import ComponentStatusProvider
+from .configuration import (
+    MAX_BOSE_POLL_INTERVAL_SECONDS,
+    MIN_BOSE_POLL_INTERVAL_SECONDS,
+    SettingsConfigurationStore,
+    SettingsPersistenceError,
 )
 from .duration import audio_duration_seconds
 from .library import (
@@ -43,6 +50,19 @@ class QueueAddRequest(BaseModel):
     queue_paths: list[str] = Field(default_factory=list)
 
 
+class SettingsUpdateRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    bose_speaker_ip: str | None
+    aftertouch_base_url: str | None
+    soundtouch_cli_command: str
+    public_base_url: str | None
+    bose_state_poll_interval_seconds: float = Field(
+        ge=MIN_BOSE_POLL_INTERVAL_SECONDS,
+        le=MAX_BOSE_POLL_INTERVAL_SECONDS,
+    )
+
+
 def create_app(settings: Settings | None = None) -> FastAPI:
     app_settings = settings or Settings.from_environment()
 
@@ -52,6 +72,12 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         version=__version__,
     )
     app.state.settings = app_settings
+    app.state.settings_store = SettingsConfigurationStore(app_settings)
+    app.state.component_status_provider = ComponentStatusProvider(
+        __version__,
+        app_settings.aftertouch_base_url,
+        app_settings.soundtouch_cli_command,
+    )
     app.state.local_player = MpvPlayer(
         app_settings.mpv_command,
         app_settings.mpv_ipc_path,
@@ -103,8 +129,29 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         return {"status": "ok", "version": __version__}
 
     @app.get("/api/settings")
-    def read_settings() -> dict[str, str | int | float | None]:
-        return app_settings.as_dict()
+    def read_settings() -> dict[str, object]:
+        return app.state.settings_store.read()
+
+    @app.put("/api/settings")
+    def update_settings(request: SettingsUpdateRequest) -> dict[str, object]:
+        try:
+            saved_settings = app.state.settings_store.update(request.model_dump())
+        except SettingsPersistenceError as error:
+            raise HTTPException(status_code=422, detail=str(error)) from error
+
+        return {
+            "settings": saved_settings,
+            "restart_required": True,
+            "message": (
+                "Settings saved. Restart TheCakeIsAPI to apply the changes."
+            ),
+        }
+
+    @app.get("/api/components/status")
+    def component_status() -> dict[str, object]:
+        return {
+            "components": app.state.component_status_provider.get_status(),
+        }
 
     @app.get("/api/library/status")
     def library_status() -> dict[str, object]:

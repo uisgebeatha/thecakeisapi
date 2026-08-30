@@ -46,6 +46,7 @@ input:focus-visible {
 
 h1,
 h2,
+h3,
 p {
   margin: 0;
 }
@@ -109,6 +110,30 @@ h1 {
   white-space: nowrap;
 }
 
+.settings-open-button,
+.settings-close-button {
+  display: inline-grid;
+  place-items: center;
+  flex: 0 0 auto;
+  width: 2.25rem;
+  height: 2.25rem;
+  border: 1px solid #929ba6;
+  border-radius: 50%;
+  padding: 0;
+  background: var(--surface);
+  color: inherit;
+  cursor: pointer;
+  font-size: 1.15rem;
+  line-height: 1;
+}
+
+.settings-open-button:hover,
+.settings-open-button:focus-visible,
+.settings-close-button:hover,
+.settings-close-button:focus-visible {
+  background: var(--surface-subtle);
+}
+
 .status[data-state="ok"] {
   border-color: #33845b;
   color: #216343;
@@ -117,6 +142,146 @@ h1 {
 .status[data-state="error"] {
   border-color: #b75555;
   color: #923838;
+}
+
+.message[data-state="warning"] {
+  color: #855f12;
+}
+
+.settings-dialog {
+  width: min(44rem, calc(100% - 1.5rem));
+  max-height: calc(100vh - 1.5rem);
+  max-height: calc(100dvh - 1.5rem);
+  border: 1px solid var(--border);
+  border-radius: 0.4rem;
+  padding: 0;
+  overflow: auto;
+  background: var(--surface);
+  color: inherit;
+  box-shadow: 0 0.8rem 2rem rgba(20, 24, 28, 0.28);
+}
+
+.settings-dialog::backdrop {
+  background: rgba(20, 24, 28, 0.55);
+}
+
+.settings-dialog-header {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 1rem;
+  padding: 1rem 1.15rem;
+  border-bottom: 1px solid var(--border);
+  background: var(--surface);
+}
+
+.settings-dialog h2 {
+  font-size: 1.1rem;
+}
+
+.settings-dialog h3 {
+  margin-bottom: 0.75rem;
+  font-size: 0.9rem;
+  font-weight: 750;
+}
+
+.settings-dialog-header .message {
+  margin-top: 0.2rem;
+  font-size: 0.8rem;
+}
+
+.settings-section {
+  padding: 1rem 1.15rem;
+}
+
+.settings-section + .settings-section {
+  border-top: 1px solid var(--border);
+}
+
+.settings-fields {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0.8rem 1rem;
+}
+
+.settings-field {
+  display: grid;
+  gap: 0.3rem;
+  min-width: 0;
+  color: var(--muted);
+  font-size: 0.8rem;
+  font-weight: 650;
+}
+
+.settings-field input {
+  width: 100%;
+  min-height: 2.75rem;
+  border: 1px solid #929ba6;
+  border-radius: 0.35rem;
+  padding: 0.55rem 0.65rem;
+  background: var(--surface);
+  color: inherit;
+  font-weight: 400;
+}
+
+.settings-actions {
+  display: flex;
+  align-items: center;
+  gap: 0.8rem;
+  min-height: 2.75rem;
+  margin-top: 1rem;
+}
+
+.settings-save-button {
+  flex: 0 0 auto;
+  min-height: 2.75rem;
+  border: 1px solid #236b4b;
+  border-radius: 0.35rem;
+  padding: 0.55rem 0.9rem;
+  background: var(--accent-soft);
+  color: var(--accent);
+  cursor: pointer;
+  font-weight: 750;
+}
+
+.settings-save-button:disabled {
+  cursor: wait;
+  opacity: 0.6;
+}
+
+.component-status-list {
+  margin: 0;
+}
+
+.component-status-list > div {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 1rem;
+  min-height: 2.25rem;
+  padding: 0.45rem 0;
+  border-top: 1px solid var(--border);
+}
+
+.component-status-list > div:first-child {
+  border-top: 0;
+}
+
+.component-status-list dt {
+  font-weight: 650;
+}
+
+.component-status-list dd {
+  margin: 0;
+  color: var(--muted);
+  text-align: right;
+}
+
+.component-status-list dd[data-state="available"] {
+  color: var(--accent);
 }
 
 .content {
@@ -663,6 +828,19 @@ button.entry-details-button {
   .transport {
     grid-template-columns: repeat(3, minmax(0, 1fr));
   }
+
+  .settings-fields {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .settings-actions {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .settings-save-button {
+    width: 100%;
+  }
 }
 
 @media (max-width: 420px) {
@@ -683,6 +861,11 @@ button.entry-details-button {
     padding-right: 0.4rem;
     padding-left: 0.4rem;
     font-size: 0.72rem;
+  }
+
+  .settings-open-button {
+    width: 2rem;
+    height: 2rem;
   }
 
   .output-heading {
@@ -726,13 +909,26 @@ button.entry-details-button {
     color: #ee9c9c;
   }
 
+  .message[data-state="warning"] {
+    color: #e7c26c;
+  }
+
   .nav-button,
+  .settings-open-button,
+  .settings-close-button,
+  .settings-field input,
   .entry-row,
   .entry-details-button,
   .queue-button {
     border-color: var(--border);
     background: var(--surface);
     color: #f2f2ec;
+  }
+
+  .settings-dialog,
+  .settings-dialog-header {
+    border-color: var(--border);
+    background: var(--surface);
   }
 
   .nav-button:hover,

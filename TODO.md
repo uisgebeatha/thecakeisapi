@@ -115,6 +115,15 @@
 - [x] Keep the mobile app status and library navigation visible while directory entries scroll.
 - [x] Keep Settings/configuration UI work deferred to v0.4.3.
 
+## v0.4.3 - Settings and Component Status
+
+- [x] Add a compact desktop/mobile Settings dialog using the existing vanilla UI.
+- [x] Expose only the supported editable settings through the Settings API.
+- [x] Validate and atomically persist supported changes while preserving unrelated config values.
+- [x] Clearly report that saved configuration requires an application restart.
+- [x] Display cached TheCakeIsAPI, AfterTouch, and `soundtouch-cli` version/status information.
+- [x] Fail gracefully when an external component version is unknown or unavailable.
+
 ## Milestone 5 Deployment
 
 - [x] Add recommended systemd service template for TheCakeIsAPI.
@@ -153,6 +162,7 @@
 - [ ] Consider album artwork support.
 - [ ] Consider volume control.
 - [ ] Consider shuffle mode.
+- [ ] Replace mobile playback text controls with compact icon-based controls.
 
 ## Design Investigation
 
@@ -179,5 +189,5 @@
   - [x] Support a full custom executable path.
   - [ ] Fully document configuration examples.
 
-- [ ] Add a Settings/configuration UI in v0.4.3.
-- [ ] Display TheCakeIsAPI, AfterTouch, and `soundtouch-cli` versions in the UI.
+- [x] Add a Settings/configuration UI in v0.4.3.
+- [x] Display TheCakeIsAPI, AfterTouch, and `soundtouch-cli` versions in the UI.

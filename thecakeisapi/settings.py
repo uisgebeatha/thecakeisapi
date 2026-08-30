@@ -1,10 +1,16 @@
 import json
 import os
+import re
 from dataclasses import dataclass, field
 from ipaddress import ip_address
 from pathlib import Path
 from typing import Any
 from urllib.parse import urlparse
+
+
+HOSTNAME_LABEL_PATTERN = re.compile(
+    r"^[A-Za-z0-9](?:[A-Za-z0-9-]{0,61}[A-Za-z0-9])?$",
+)
 
 
 @dataclass(frozen=True)
@@ -153,10 +159,7 @@ class Settings:
             raise ValueError("soundtouch_cli_command must not be empty")
 
         if self.bose_speaker_ip not in ("", None):
-            try:
-                ip_address(self.bose_speaker_ip)
-            except ValueError as error:
-                raise ValueError("bose_speaker_ip must be a valid IP address") from error
+            self._validate_speaker_address(self.bose_speaker_ip)
 
         if self.bose_api_port < 1 or self.bose_api_port > 65535:
             raise ValueError("bose_api_port must be between 1 and 65535")
@@ -290,5 +293,38 @@ class Settings:
             return
 
         parsed_url = urlparse(value)
-        if parsed_url.scheme not in {"http", "https"} or not parsed_url.netloc:
+        try:
+            parsed_port = parsed_url.port
+        except ValueError as error:
+            raise ValueError(f"{key} must be an HTTP or HTTPS URL") from error
+
+        hostname = parsed_url.hostname
+        if (
+            parsed_url.scheme not in {"http", "https"}
+            or not parsed_url.netloc
+            or not hostname
+            or any(character.isspace() for character in hostname)
+            or parsed_url.username is not None
+            or parsed_url.password is not None
+            or parsed_port is not None and not 1 <= parsed_port <= 65535
+        ):
             raise ValueError(f"{key} must be an HTTP or HTTPS URL")
+
+    @staticmethod
+    def _validate_speaker_address(value: str) -> None:
+        try:
+            ip_address(value)
+            return
+        except ValueError:
+            pass
+
+        hostname = value.rstrip(".")
+        labels = hostname.split(".")
+        if (
+            not hostname
+            or len(hostname) > 253
+            or any(not HOSTNAME_LABEL_PATTERN.fullmatch(label) for label in labels)
+        ):
+            raise ValueError(
+                "bose_speaker_ip must be a valid IP address or hostname",
+            )

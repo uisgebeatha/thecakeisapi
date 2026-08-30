@@ -13,7 +13,7 @@ A lightweight self-hosted music player for Raspberry Pi with support for:
 
 The project is designed to remain simple, low-dependency, and easy to run on Raspberry Pi hardware.
 
-Current release: **v0.4.2**.
+Current release: **v0.4.3**.
 
 ## Dependencies
 
@@ -150,7 +150,11 @@ Example:
 
 `soundtouch_cli_command` may be a command available in `PATH`, such as `soundtouch-cli`, or a full executable path.
 
-Browser-based Settings/configuration editing is deferred to v0.4.3. v0.4.2 continues to use the existing configuration file.
+Open Settings from the gear button in the application header. The dialog can edit the Bose speaker address, AfterTouch base URL, `soundtouch-cli` command/path, public audio base URL, and Bose status polling interval. Saves use an atomic replacement of `config.json` and preserve every unrelated configuration value.
+
+These settings are consumed when the process starts. The dialog reports that a TheCakeIsAPI service restart is required after saving; it does not restart the application automatically.
+
+The read-only Component Status section displays the central TheCakeIsAPI version, the AfterTouch version reported by its `/health` endpoint, and the version reported by `soundtouch-cli --version`. External checks are cached for five minutes and display `Unknown` or `Unavailable` without affecting playback when detection fails.
 
 ## Running
 

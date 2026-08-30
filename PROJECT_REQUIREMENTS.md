@@ -63,7 +63,12 @@ Build a minimal proof of concept:
 - Treat short-lived Bose `INVALID_SOURCE` responses as custom-radio transition states; confirmed standby and genuine external source changes must still clear stale playback state.
 - Use `ffprobe` as the preferred duration source, with frame-based MP3 and STREAMINFO FLAC fallbacks when it is unavailable or fails.
 - On phone-sized screens, keep the app status and current library navigation visible while directory entries scroll.
-- Settings/configuration UI work is deferred to v0.4.3.
+- Settings/configuration UI support is introduced in v0.4.3.
+- The v0.4.3 Settings UI may edit only the Bose speaker address, AfterTouch base URL, `soundtouch-cli` command/path, public audio base URL, and Bose status polling interval.
+- Settings updates must validate inputs and atomically replace `config.json` while preserving unrelated values.
+- Saved Settings changes take effect after an application/service restart; the application must never restart itself automatically.
+- Component status is read-only and may report TheCakeIsAPI, AfterTouch `/health`, and `soundtouch-cli --version` values without making playback depend on those probes.
+- Compact icon-based mobile playback controls remain deferred.
 
 ## Current Deployment Decisions
 

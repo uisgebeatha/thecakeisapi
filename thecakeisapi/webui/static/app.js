@@ -21,6 +21,13 @@ const pauseButton = document.querySelector("#pause-button");
 const stopButton = document.querySelector("#stop-button");
 const nextButton = document.querySelector("#next-button");
 const repeatButton = document.querySelector("#repeat-button");
+const settingsButton = document.querySelector("#settings-button");
+const settingsDialog = document.querySelector("#settings-dialog");
+const settingsCloseButton = document.querySelector("#settings-close-button");
+const settingsForm = document.querySelector("#settings-form");
+const settingsSaveButton = document.querySelector("#settings-save-button");
+const settingsMessage = document.querySelector("#settings-message");
+const componentStatusValues = [...document.querySelectorAll("[data-component-id]")];
 
 let currentDirectoryFiles = [];
 let lastPlaybackState = null;
@@ -545,6 +552,124 @@ function formatTime(seconds) {
   return `${minutes}:${remainingSeconds.toString().padStart(2, "0")}`;
 }
 
+function openSettings() {
+  settingsDialog.showModal();
+  loadEditableSettings();
+  loadComponentStatus();
+}
+
+async function loadEditableSettings() {
+  settingsMessage.textContent = "Loading settings...";
+  settingsMessage.dataset.state = "";
+
+  try {
+    const response = await fetch("/api/settings");
+    const data = await response.json();
+    if (!response.ok) {
+      throw new Error(apiErrorMessage(data, "Settings request failed"));
+    }
+
+    populateSettingsForm(data.settings);
+    settingsMessage.textContent = data.restart_required
+      ? "Saved settings are waiting for an application restart."
+      : "";
+    settingsMessage.dataset.state = data.restart_required ? "warning" : "";
+  } catch (error) {
+    settingsMessage.textContent = `Could not load settings: ${error.message}`;
+    settingsMessage.dataset.state = "error";
+  }
+}
+
+function populateSettingsForm(settings) {
+  settingsForm.elements.bose_speaker_ip.value = settings.bose_speaker_ip || "";
+  settingsForm.elements.aftertouch_base_url.value = settings.aftertouch_base_url || "";
+  settingsForm.elements.soundtouch_cli_command.value = settings.soundtouch_cli_command || "";
+  settingsForm.elements.public_base_url.value = settings.public_base_url || "";
+  settingsForm.elements.bose_state_poll_interval_seconds.value =
+    settings.bose_state_poll_interval_seconds;
+}
+
+async function saveSettings(event) {
+  event.preventDefault();
+  settingsSaveButton.disabled = true;
+  settingsMessage.textContent = "Saving settings...";
+  settingsMessage.dataset.state = "";
+
+  const payload = {
+    bose_speaker_ip: optionalSettingValue("bose_speaker_ip"),
+    aftertouch_base_url: optionalSettingValue("aftertouch_base_url"),
+    soundtouch_cli_command: settingsForm.elements.soundtouch_cli_command.value.trim(),
+    public_base_url: optionalSettingValue("public_base_url"),
+    bose_state_poll_interval_seconds: Number(
+      settingsForm.elements.bose_state_poll_interval_seconds.value,
+    ),
+  };
+
+  try {
+    const response = await fetch("/api/settings", {
+      method: "PUT",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify(payload),
+    });
+    const data = await response.json();
+    if (!response.ok) {
+      throw new Error(apiErrorMessage(data, "Settings could not be saved"));
+    }
+
+    populateSettingsForm(data.settings);
+    settingsMessage.textContent = data.message;
+    settingsMessage.dataset.state = "warning";
+  } catch (error) {
+    settingsMessage.textContent = `Could not save settings: ${error.message}`;
+    settingsMessage.dataset.state = "error";
+  } finally {
+    settingsSaveButton.disabled = false;
+  }
+}
+
+function optionalSettingValue(fieldName) {
+  const value = settingsForm.elements[fieldName].value.trim();
+  return value || null;
+}
+
+async function loadComponentStatus() {
+  for (const statusValue of componentStatusValues) {
+    statusValue.textContent = "Loading...";
+    statusValue.dataset.state = "";
+  }
+
+  try {
+    const response = await fetch("/api/components/status");
+    const data = await response.json();
+    if (!response.ok) {
+      throw new Error("Component status request failed");
+    }
+
+    for (const statusValue of componentStatusValues) {
+      const component = data.components[statusValue.dataset.componentId];
+      statusValue.textContent = component?.version || "Unknown";
+      statusValue.dataset.state = component?.status || "unknown";
+    }
+  } catch (error) {
+    for (const statusValue of componentStatusValues) {
+      statusValue.textContent = "Unavailable";
+      statusValue.dataset.state = "unavailable";
+    }
+  }
+}
+
+function apiErrorMessage(responseData, fallbackMessage) {
+  if (typeof responseData?.detail === "string") {
+    return responseData.detail;
+  }
+  if (Array.isArray(responseData?.detail)) {
+    return responseData.detail.map((error) => error.msg).join("; ");
+  }
+  return fallbackMessage;
+}
+
 upButton.addEventListener("click", () => {
   navigateTo(upButton.dataset.path || "");
 });
@@ -612,6 +737,10 @@ trackProgress.addEventListener("change", () => {
 outputSelector.addEventListener("change", () => {
   outputSelectionInitialized = true;
 });
+
+settingsButton.addEventListener("click", openSettings);
+settingsCloseButton.addEventListener("click", () => settingsDialog.close());
+settingsForm.addEventListener("submit", saveSettings);
 
 window.addEventListener("hashchange", () => {
   loadDirectory(currentPath());
