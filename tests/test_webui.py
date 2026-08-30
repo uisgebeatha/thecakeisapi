@@ -120,7 +120,7 @@ class WebUiTransportTests(unittest.TestCase):
         app_js = APP_JS.read_text(encoding="utf-8")
         styles_css = STYLES_CSS.read_text(encoding="utf-8")
 
-        self.assertIn('__version__ = "0.4.3"', package_init)
+        self.assertIn('__version__ = "0.4.4"', package_init)
         self.assertIn("version=__version__", main_py)
         self.assertIn('"version": __version__', main_py)
         self.assertNotIn("0.4.0", index_html)
@@ -183,6 +183,59 @@ class WebUiTransportTests(unittest.TestCase):
             styles_css,
             r"@media \(max-width: 760px\)[\s\S]*?\.settings-fields\s*\{"
             r"[^}]*grid-template-columns: minmax\(0, 1fr\);",
+        )
+
+    def test_settings_restart_requires_confirmation_and_explains_playback_stop(self) -> None:
+        index_html = INDEX_HTML.read_text(encoding="utf-8")
+        app_js = APP_JS.read_text(encoding="utf-8")
+
+        self.assertIn('id="settings-restart-panel"', index_html)
+        self.assertIn('id="settings-restart-button"', index_html)
+        self.assertIn("Playback will stop briefly", index_html)
+        self.assertIn("window.confirm(", app_js)
+        self.assertIn("Playback will stop briefly while the service restarts", app_js)
+        self.assertIn("if (!confirmed)", app_js)
+
+    def test_settings_restart_disables_repeats_and_polls_health(self) -> None:
+        app_js = APP_JS.read_text(encoding="utf-8")
+
+        self.assertIn('fetch("/api/system/restart", {', app_js)
+        self.assertIn('method: "POST"', app_js)
+        self.assertIn("settingsRestartButton.disabled = true;", app_js)
+        self.assertIn("await waitForApplicationHealth();", app_js)
+        self.assertIn('fetch("/api/health", { cache: "no-store" })', app_js)
+        self.assertIn("RESTART_HEALTH_POLL_INTERVAL_MS = 1500", app_js)
+        self.assertIn("RESTART_HEALTH_TIMEOUT_MS = 45000", app_js)
+
+    def test_settings_restart_timeout_is_reported_and_retry_is_enabled(self) -> None:
+        app_js = APP_JS.read_text(encoding="utf-8")
+
+        self.assertIn(
+            'throw new Error("The application did not come back online within 45 seconds")',
+            app_js,
+        )
+        self.assertIn(
+            "settingsMessage.textContent = `Could not restart TheCakeIsAPI: ${error.message}`;",
+            app_js,
+        )
+        self.assertIn("settingsRestartButton.disabled = false;", app_js)
+
+    def test_restart_action_is_shown_only_when_restart_is_required(self) -> None:
+        index_html = INDEX_HTML.read_text(encoding="utf-8")
+        app_js = APP_JS.read_text(encoding="utf-8")
+        styles_css = STYLES_CSS.read_text(encoding="utf-8")
+
+        self.assertRegex(
+            index_html,
+            r'id="settings-restart-panel" class="settings-restart-panel" hidden',
+        )
+        self.assertIn("setRestartRequired(data.restart_required);", app_js)
+        self.assertIn("settingsRestartPanel.hidden = !restartRequired;", app_js)
+        self.assertIn(".settings-restart-panel[hidden]", styles_css)
+        self.assertRegex(
+            styles_css,
+            r"@media \(max-width: 760px\)[\s\S]*?\.settings-restart-panel\s*\{"
+            r"[^}]*flex-direction: column;",
         )
 
 

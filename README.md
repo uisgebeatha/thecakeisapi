@@ -13,7 +13,7 @@ A lightweight self-hosted music player for Raspberry Pi with support for:
 
 The project is designed to remain simple, low-dependency, and easy to run on Raspberry Pi hardware.
 
-Current release: **v0.4.3**.
+Current release: **v0.4.4**.
 
 ## Dependencies
 
@@ -152,7 +152,9 @@ Example:
 
 Open Settings from the gear button in the application header. The dialog can edit the Bose speaker address, AfterTouch base URL, `soundtouch-cli` command/path, public audio base URL, and Bose status polling interval. Saves use an atomic replacement of `config.json` and preserve every unrelated configuration value.
 
-These settings are consumed when the process starts. The dialog reports that a TheCakeIsAPI service restart is required after saving; it does not restart the application automatically.
+These settings are consumed when the process starts. Saving never restarts the application automatically. When a saved change requires restart, Settings shows a secondary **Restart TheCakeIsAPI** action with an explicit confirmation that playback will stop briefly. After confirmation, the browser waits for `/api/health` to return and then reloads the settings and component status. A failed or timed-out restart leaves the action available for a manual retry.
+
+The restart API is intentionally narrow: it accepts no command or service name. In the supported systemd deployment it schedules a fixed delayed exit of the current TheCakeIsAPI process, and the existing `Restart=on-failure` policy starts it again. Manual development runs cannot use the action unless they are explicitly managed and enabled.
 
 The read-only Component Status section displays the central TheCakeIsAPI version, the AfterTouch version reported by its `/health` endpoint, and the version reported by `soundtouch-cli --version`. External checks are cached for five minutes and display `Unknown` or `Unavailable` without affecting playback when detection fails.
 
@@ -195,6 +197,7 @@ Type=simple
 User=controller
 WorkingDirectory=/home/controller/thecakeisapi
 Environment=PYTHONUNBUFFERED=1
+Environment=THECAKEISAPI_RESTART_ENABLED=1
 ExecStart=/home/controller/thecakeisapi/venv/bin/uvicorn thecakeisapi.main:app --host 0.0.0.0 --port 8000
 Restart=on-failure
 RestartSec=5
@@ -218,6 +221,8 @@ Reload systemd:
 ```bash
 sudo systemctl daemon-reload
 ```
+
+`THECAKEISAPI_RESTART_ENABLED=1` opts this systemd-managed process into the Settings restart action. No sudoers rule or passwordless `systemctl` permission is required: the app exits only its own process with a fixed failure code, and systemd applies the existing `Restart=on-failure` policy. The endpoint returns a clear unavailable response if the flag is absent or the process is not running under systemd.
 
 Enable boot startup:
 

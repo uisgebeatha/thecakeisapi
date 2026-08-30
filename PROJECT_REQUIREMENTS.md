@@ -66,9 +66,11 @@ Build a minimal proof of concept:
 - Settings/configuration UI support is introduced in v0.4.3.
 - The v0.4.3 Settings UI may edit only the Bose speaker address, AfterTouch base URL, `soundtouch-cli` command/path, public audio base URL, and Bose status polling interval.
 - Settings updates must validate inputs and atomically replace `config.json` while preserving unrelated values.
-- Saved Settings changes take effect after an application/service restart; the application must never restart itself automatically.
+- Saved Settings changes take effect after an application/service restart; saving must never trigger an automatic restart.
 - Component status is read-only and may report TheCakeIsAPI, AfterTouch `/health`, and `soundtouch-cli --version` values without making playback depend on those probes.
-- Compact icon-based mobile playback controls remain deferred.
+- The v0.4.4 Settings UI may request a confirmed application restart only when the systemd deployment explicitly enables it.
+- Application restart must target only the running TheCakeIsAPI process and rely on its existing systemd restart policy; do not expose shell commands or general service management.
+- Compact icon-based mobile playback controls remain deferred to v0.4.5.
 
 ## Current Deployment Decisions
 
@@ -83,6 +85,7 @@ Build a minimal proof of concept:
 - `soundtouch-cli` is installed directly on the Pi 4.
 - AfterTouch location remains configurable so a Pi Zero or another LAN host can also be used.
 - The default browser playback output is Bose SoundTouch as of v0.4.0.
+- Settings-triggered restart uses the service's existing `Restart=on-failure` policy and requires no passwordless sudo permission.
 
 ## Engineering Note - Bose Pause/Resume
 

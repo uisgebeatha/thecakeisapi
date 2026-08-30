@@ -252,6 +252,52 @@ h1 {
   opacity: 0.6;
 }
 
+.settings-restart-panel {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  margin-top: 1rem;
+  border-top: 1px solid var(--border);
+  padding-top: 1rem;
+}
+
+.settings-restart-panel[hidden] {
+  display: none;
+}
+
+.settings-restart-panel strong {
+  font-size: 0.85rem;
+}
+
+.settings-restart-panel p {
+  margin-top: 0.2rem;
+  color: var(--muted);
+  font-size: 0.8rem;
+}
+
+.settings-restart-button {
+  flex: 0 0 auto;
+  min-height: 2.75rem;
+  border: 1px solid #926b2e;
+  border-radius: 0.35rem;
+  padding: 0.55rem 0.9rem;
+  background: var(--surface);
+  color: inherit;
+  cursor: pointer;
+  font-weight: 650;
+}
+
+.settings-restart-button:hover,
+.settings-restart-button:focus-visible {
+  background: var(--surface-subtle);
+}
+
+.settings-restart-button:disabled {
+  cursor: wait;
+  opacity: 0.6;
+}
+
 .component-status-list {
   margin: 0;
 }
@@ -838,8 +884,14 @@ button.entry-details-button {
     flex-direction: column;
   }
 
-  .settings-save-button {
+  .settings-save-button,
+  .settings-restart-button {
     width: 100%;
+  }
+
+  .settings-restart-panel {
+    align-items: stretch;
+    flex-direction: column;
   }
 }
 
@@ -916,6 +968,7 @@ button.entry-details-button {
   .nav-button,
   .settings-open-button,
   .settings-close-button,
+  .settings-restart-button,
   .settings-field input,
   .entry-row,
   .entry-details-button,

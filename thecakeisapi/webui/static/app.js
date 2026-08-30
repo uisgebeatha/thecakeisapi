@@ -27,6 +27,8 @@ const settingsCloseButton = document.querySelector("#settings-close-button");
 const settingsForm = document.querySelector("#settings-form");
 const settingsSaveButton = document.querySelector("#settings-save-button");
 const settingsMessage = document.querySelector("#settings-message");
+const settingsRestartPanel = document.querySelector("#settings-restart-panel");
+const settingsRestartButton = document.querySelector("#settings-restart-button");
 const componentStatusValues = [...document.querySelectorAll("[data-component-id]")];
 
 let currentDirectoryFiles = [];
@@ -37,6 +39,9 @@ const PLAY_ENDPOINTS = Object.freeze({
   bose: "/api/player/bose/play",
   local: "/api/player/local/play",
 });
+const RESTART_HEALTH_INITIAL_DELAY_MS = 2000;
+const RESTART_HEALTH_POLL_INTERVAL_MS = 1500;
+const RESTART_HEALTH_TIMEOUT_MS = 45000;
 
 async function loadApp() {
   try {
@@ -570,6 +575,7 @@ async function loadEditableSettings() {
     }
 
     populateSettingsForm(data.settings);
+    setRestartRequired(data.restart_required);
     settingsMessage.textContent = data.restart_required
       ? "Saved settings are waiting for an application restart."
       : "";
@@ -619,6 +625,7 @@ async function saveSettings(event) {
     }
 
     populateSettingsForm(data.settings);
+    setRestartRequired(data.restart_required);
     settingsMessage.textContent = data.message;
     settingsMessage.dataset.state = "warning";
   } catch (error) {
@@ -627,6 +634,79 @@ async function saveSettings(event) {
   } finally {
     settingsSaveButton.disabled = false;
   }
+}
+
+function setRestartRequired(restartRequired) {
+  settingsRestartPanel.hidden = !restartRequired;
+}
+
+async function restartApplication() {
+  const confirmed = window.confirm(
+    "Restart TheCakeIsAPI now? Playback will stop briefly while the service restarts.",
+  );
+  if (!confirmed) {
+    return;
+  }
+
+  settingsRestartButton.disabled = true;
+  settingsRestartButton.textContent = "Restarting...";
+  settingsSaveButton.disabled = true;
+  settingsMessage.textContent = "Restarting TheCakeIsAPI and waiting for it to reconnect...";
+  settingsMessage.dataset.state = "warning";
+
+  try {
+    const response = await fetch("/api/system/restart", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({}),
+    });
+    const data = await response.json();
+    if (!response.ok) {
+      throw new Error(apiErrorMessage(data, "Restart could not be initiated"));
+    }
+
+    await waitForApplicationHealth();
+    await loadEditableSettings();
+    loadComponentStatus();
+    settingsMessage.textContent = "TheCakeIsAPI restarted successfully.";
+    settingsMessage.dataset.state = "";
+  } catch (error) {
+    settingsMessage.textContent = `Could not restart TheCakeIsAPI: ${error.message}`;
+    settingsMessage.dataset.state = "error";
+  } finally {
+    settingsRestartButton.disabled = false;
+    settingsRestartButton.textContent = "Restart TheCakeIsAPI";
+    settingsSaveButton.disabled = false;
+  }
+}
+
+async function waitForApplicationHealth() {
+  const deadline = Date.now() + RESTART_HEALTH_TIMEOUT_MS;
+  await delay(RESTART_HEALTH_INITIAL_DELAY_MS);
+
+  while (Date.now() < deadline) {
+    try {
+      const response = await fetch("/api/health", { cache: "no-store" });
+      if (response.ok) {
+        const health = await response.json();
+        if (health.status === "ok") {
+          return;
+        }
+      }
+    } catch (error) {
+      // The connection is expected to fail while systemd starts the new process.
+    }
+
+    await delay(RESTART_HEALTH_POLL_INTERVAL_MS);
+  }
+
+  throw new Error("The application did not come back online within 45 seconds");
+}
+
+function delay(milliseconds) {
+  return new Promise((resolve) => window.setTimeout(resolve, milliseconds));
 }
 
 function optionalSettingValue(fieldName) {
@@ -741,6 +821,7 @@ outputSelector.addEventListener("change", () => {
 settingsButton.addEventListener("click", openSettings);
 settingsCloseButton.addEventListener("click", () => settingsDialog.close());
 settingsForm.addEventListener("submit", saveSettings);
+settingsRestartButton.addEventListener("click", restartApplication);
 
 window.addEventListener("hashchange", () => {
   loadDirectory(currentPath());

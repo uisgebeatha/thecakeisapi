@@ -124,6 +124,15 @@
 - [x] Display cached TheCakeIsAPI, AfterTouch, and `soundtouch-cli` version/status information.
 - [x] Fail gracefully when an external component version is unknown or unavailable.
 
+## v0.4.4 - Settings Restart Action
+
+- [x] Add an explicit confirmed restart action after settings changes.
+- [x] Restrict restart to the running TheCakeIsAPI process under systemd.
+- [x] Return useful errors when managed restart is unavailable or already pending.
+- [x] Disable repeated restart requests and poll application health until reconnect.
+- [x] Keep restart unavailable by default outside the systemd deployment.
+- [x] Defer compact playback controls and output-selector redesign to v0.4.5.
+
 ## Milestone 5 Deployment
 
 - [x] Add recommended systemd service template for TheCakeIsAPI.

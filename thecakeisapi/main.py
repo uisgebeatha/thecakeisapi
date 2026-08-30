@@ -1,7 +1,7 @@
 from pathlib import Path
 from threading import Event, Lock, Thread
 
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, Request
 from fastapi.responses import FileResponse, HTMLResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, ConfigDict, Field
@@ -33,6 +33,11 @@ from .library import (
 )
 from .playlist import PlaybackQueue, QueueTrack
 from .player import MpvPlayer, PlayerError
+from .restart import (
+    ApplicationRestarter,
+    RestartAlreadyScheduledError,
+    RestartUnavailableError,
+)
 from .settings import Settings
 
 
@@ -63,7 +68,14 @@ class SettingsUpdateRequest(BaseModel):
     )
 
 
-def create_app(settings: Settings | None = None) -> FastAPI:
+class RestartRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+
+def create_app(
+    settings: Settings | None = None,
+    application_restarter: ApplicationRestarter | None = None,
+) -> FastAPI:
     app_settings = settings or Settings.from_environment()
 
     app = FastAPI(
@@ -77,6 +89,9 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         __version__,
         app_settings.aftertouch_base_url,
         app_settings.soundtouch_cli_command,
+    )
+    app.state.application_restarter = (
+        application_restarter or ApplicationRestarter.from_environment()
     )
     app.state.local_player = MpvPlayer(
         app_settings.mpv_command,
@@ -151,6 +166,29 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     def component_status() -> dict[str, object]:
         return {
             "components": app.state.component_status_provider.get_status(),
+        }
+
+    @app.post("/api/system/restart", status_code=202)
+    def restart_application(
+        http_request: Request,
+        _request: RestartRequest,
+    ) -> dict[str, str]:
+        if http_request.query_params:
+            raise HTTPException(
+                status_code=422,
+                detail="Restart does not accept query parameters",
+            )
+
+        try:
+            app.state.application_restarter.request_restart()
+        except RestartAlreadyScheduledError as error:
+            raise HTTPException(status_code=409, detail=str(error)) from error
+        except RestartUnavailableError as error:
+            raise HTTPException(status_code=503, detail=str(error)) from error
+
+        return {
+            "status": "restarting",
+            "message": "TheCakeIsAPI restart has been scheduled.",
         }
 
     @app.get("/api/library/status")
