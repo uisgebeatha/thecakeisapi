@@ -21,6 +21,24 @@ class BosePlaybackRequest:
 
 
 @dataclass(frozen=True)
+class BosePreset:
+    id: int
+    display_name: str | None
+    source: str | None
+    available: bool
+    content_type: str | None = None
+    location: str | None = None
+
+    def as_dict(self) -> dict[str, object]:
+        return {
+            "id": self.id,
+            "display_name": self.display_name,
+            "source": self.source,
+            "available": self.available,
+        }
+
+
+@dataclass(frozen=True)
 class BoseNowPlayingStatus:
     source: str | None
     play_status: str | None
@@ -408,6 +426,8 @@ class BoseNowPlayingClient:
         api_port: int = 8090,
         timeout_seconds: float = 3,
     ) -> None:
+        self.presets_url = f"http://{speaker_ip}:{api_port}/presets"
+        self.key_url = f"http://{speaker_ip}:{api_port}/key"
         self.now_playing_url = f"http://{speaker_ip}:{api_port}/now_playing"
         self.timeout_seconds = timeout_seconds
 
@@ -420,6 +440,40 @@ class BoseNowPlayingClient:
             raise BosePlaybackError(f"Bose now_playing request failed: {error}") from error
 
         return parse_now_playing(body)
+
+    def fetch_presets(self) -> list[BosePreset]:
+        request = Request(self.presets_url, method="GET")
+        try:
+            with urlopen(request, timeout=self.timeout_seconds) as response:
+                body = response.read().decode("utf-8", errors="replace")
+        except (URLError, OSError) as error:
+            raise BosePlaybackError(f"Bose presets request failed: {error}") from error
+
+        return parse_presets(body)
+
+    def select_preset(self, preset_id: int) -> None:
+        if preset_id not in range(1, 7):
+            raise BosePlaybackError("Bose preset id must be between 1 and 6")
+
+        key_name = f"PRESET_{preset_id}"
+        for key_state in ("press", "release"):
+            body = (
+                f'<key state="{key_state}" sender="TheCakeIsAPI">'
+                f"{key_name}</key>"
+            ).encode("utf-8")
+            request = Request(
+                self.key_url,
+                data=body,
+                headers={"Content-Type": "application/xml"},
+                method="POST",
+            )
+            try:
+                with urlopen(request, timeout=self.timeout_seconds) as response:
+                    response.read()
+            except (URLError, OSError) as error:
+                raise BosePlaybackError(
+                    f"Bose preset {preset_id} activation failed: {error}",
+                ) from error
 
     def wait_for_custom_radio(
         self,
@@ -524,6 +578,86 @@ def parse_now_playing(raw_text: str) -> BoseNowPlayingStatus:
         station_name=station_name,
         item_name=item_name,
     )
+
+
+def parse_presets(raw_text: str) -> list[BosePreset]:
+    try:
+        root = ElementTree.fromstring(raw_text)
+    except ElementTree.ParseError as error:
+        raise BosePlaybackError("Bose presets response was invalid XML") from error
+
+    presets = {
+        preset_id: BosePreset(
+            id=preset_id,
+            display_name=None,
+            source=None,
+            available=False,
+        )
+        for preset_id in range(1, 7)
+    }
+
+    for preset_element in root.iter():
+        if _xml_local_name(preset_element.tag) != "preset":
+            continue
+
+        try:
+            preset_id = int(preset_element.attrib.get("id", ""))
+        except ValueError:
+            continue
+        if preset_id not in presets:
+            continue
+
+        content_item = next(
+            (
+                element
+                for element in preset_element.iter()
+                if _xml_local_name(element.tag) == "ContentItem"
+            ),
+            None,
+        )
+        if content_item is None:
+            continue
+
+        item_name = next(
+            (
+                _clean_xml_text(element.text)
+                for element in content_item.iter()
+                if _xml_local_name(element.tag) == "itemName"
+            ),
+            None,
+        )
+        source = _clean_xml_text(content_item.attrib.get("source"))
+        content_type = _clean_xml_text(content_item.attrib.get("type"))
+        location = _clean_xml_text(content_item.attrib.get("location"))
+        source_is_valid = (source or "").upper() not in {
+            "",
+            "INVALID_SOURCE",
+            "STANDBY",
+        }
+        available = source_is_valid and bool(item_name or location)
+        parsed_preset = BosePreset(
+            id=preset_id,
+            display_name=item_name if available else None,
+            source=source if available else None,
+            available=available,
+            content_type=content_type if available else None,
+            location=location if available else None,
+        )
+        if parsed_preset.available or not presets[preset_id].available:
+            presets[preset_id] = parsed_preset
+
+    return list(presets.values())
+
+
+def _xml_local_name(tag: str) -> str:
+    return tag.rsplit("}", 1)[-1]
+
+
+def _clean_xml_text(value: str | None) -> str | None:
+    if value is None:
+        return None
+    cleaned_value = value.strip()
+    return cleaned_value or None
 
 
 def decode_custom_playback_stream_url(location: str) -> str | None:

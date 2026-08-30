@@ -223,6 +223,36 @@ def create_app(
             filename=file_path.name,
         )
 
+    @app.get("/api/player/bose/presets")
+    def read_bose_presets() -> dict[str, object]:
+        if app.state.bose_now_playing_client is None:
+            raise HTTPException(
+                status_code=503,
+                detail="bose_speaker_ip is not configured",
+            )
+
+        try:
+            presets = app.state.bose_now_playing_client.fetch_presets()
+        except BosePlaybackError as error:
+            raise HTTPException(status_code=503, detail=str(error)) from error
+
+        return {"presets": [preset.as_dict() for preset in presets]}
+
+    @app.post("/api/player/bose/presets/{preset_id}/activate")
+    def activate_bose_preset(preset_id: int) -> dict[str, object]:
+        if preset_id not in range(1, 7):
+            raise HTTPException(
+                status_code=400,
+                detail="Bose preset id must be between 1 and 6",
+            )
+
+        try:
+            with app.state.playback_lock:
+                _select_bose_preset(app, preset_id)
+                return _playback_status(app)
+        except BosePlaybackError as error:
+            raise HTTPException(status_code=503, detail=str(error)) from error
+
     @app.post("/api/player/local/play")
     def play_local_file(
         path: str,
@@ -593,6 +623,34 @@ def _play_track(app: FastAPI, track: QueueTrack) -> None:
     _stop_bose_if_active(app)
     file_path = resolve_audio_file(app.state.settings.music_root, track.path)
     app.state.local_player.play(file_path)
+
+
+def _select_bose_preset(app: FastAPI, preset_id: int) -> None:
+    if preset_id not in range(1, 7):
+        raise BosePlaybackError("Bose preset id must be between 1 and 6")
+    if app.state.bose_now_playing_client is None:
+        raise BosePlaybackError("bose_speaker_ip is not configured")
+
+    app.state.local_player.stop()
+    app.state.playback_queue.clear()
+    app.state.bose_playback_state = BosePlaybackState()
+    app.state.active_output = "bose"
+
+    try:
+        app.state.bose_now_playing_client.select_preset(preset_id)
+    except BosePlaybackError:
+        app.state.bose_playback_state.externally_stopped(
+            "Bose preset selection failed; playback ownership cleared",
+        )
+        app.state.playback_message = "Bose preset selection failed"
+        raise
+
+    app.state.bose_playback_state.externally_active(
+        f"Bose preset {preset_id} selected",
+        source="PRESET",
+    )
+    app.state.bose_playback_state.last_status_poll_monotonic = None
+    app.state.playback_message = f"Selected Bose preset {preset_id}"
 
 
 def _bose_playback_message(track_name: str, app: FastAPI) -> str:

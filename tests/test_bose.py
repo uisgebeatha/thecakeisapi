@@ -7,16 +7,20 @@ from pathlib import Path
 from unittest.mock import patch
 from urllib.parse import urlparse
 
+from fastapi import HTTPException
+
 from thecakeisapi.bose import (
     AfterTouchClient,
     BoseNowPlayingClient,
     BoseNowPlayingStatus,
+    BosePreset,
     BosePlaybackRequest,
     BosePlaybackState,
     BosePlaybackError,
     SoundTouchCliClient,
     build_library_stream_url,
     parse_now_playing,
+    parse_presets,
 )
 from thecakeisapi.main import (
     _play_bose_track,
@@ -26,6 +30,7 @@ from thecakeisapi.main import (
     _pause_bose_playback,
     _poll_bose_playback_state,
     _resume_bose_playback,
+    _select_bose_preset,
     _stop_bose_playback,
     _sync_bose_playback,
     create_app,
@@ -379,6 +384,102 @@ class SoundTouchCliClientTests(unittest.TestCase):
         )
 
 
+class BosePresetTests(unittest.TestCase):
+    def test_parses_six_populated_presets_in_numeric_order(self) -> None:
+        raw_presets = "<presets>" + "".join(
+            (
+                f'<preset id="{preset_id}">'
+                f'<ContentItem source="SOURCE_{preset_id}" type="stationurl" '
+                f'location="preset:{preset_id}">'
+                f"<itemName>Preset {preset_id}</itemName>"
+                "</ContentItem></preset>"
+            )
+            for preset_id in reversed(range(1, 7))
+        ) + "</presets>"
+
+        presets = parse_presets(raw_presets)
+
+        self.assertEqual([preset.id for preset in presets], [1, 2, 3, 4, 5, 6])
+        self.assertTrue(all(preset.available for preset in presets))
+        self.assertEqual(presets[1].display_name, "Preset 2")
+        self.assertEqual(presets[1].source, "SOURCE_2")
+        self.assertEqual(presets[1].content_type, "stationurl")
+        self.assertEqual(presets[1].location, "preset:2")
+
+    def test_empty_missing_and_malformed_entries_are_unavailable(self) -> None:
+        presets = parse_presets(
+            "<presets>"
+            '<preset id="invalid"><ContentItem source="BAD" /></preset>'
+            '<preset id="2"><ContentItem source="INVALID_SOURCE" '
+            'type="INVALID_CONTENT_TYPE" location="" /></preset>'
+            '<preset id="3"><ContentItem source="TUNEIN">'
+            "<itemName>  Radio Three  </itemName>"
+            "</ContentItem></preset>"
+            '<preset id="4"><unexpected /></preset>'
+            '<preset id="9"><ContentItem source="OUT_OF_RANGE" /></preset>'
+            "</presets>",
+        )
+
+        self.assertEqual([preset.id for preset in presets], [1, 2, 3, 4, 5, 6])
+        self.assertFalse(presets[0].available)
+        self.assertFalse(presets[1].available)
+        self.assertIsNone(presets[1].source)
+        self.assertTrue(presets[2].available)
+        self.assertEqual(presets[2].display_name, "Radio Three")
+        self.assertFalse(presets[3].available)
+        self.assertFalse(presets[4].available)
+        self.assertFalse(presets[5].available)
+
+    def test_invalid_presets_xml_uses_playback_error(self) -> None:
+        with self.assertRaisesRegex(BosePlaybackError, "invalid XML"):
+            parse_presets("<presets><preset></presets>")
+
+    @patch("thecakeisapi.bose.urlopen")
+    def test_fetch_presets_reads_bose_presets_endpoint(self, urlopen_mock) -> None:
+        urlopen_mock.return_value.__enter__.return_value.read.return_value = (
+            b'<presets><preset id="1"><ContentItem source="TUNEIN">'
+            b"<itemName>Preset One</itemName></ContentItem></preset></presets>"
+        )
+
+        presets = BoseNowPlayingClient("192.168.42.101").fetch_presets()
+
+        request = urlopen_mock.call_args.args[0]
+        self.assertEqual(request.full_url, "http://192.168.42.101:8090/presets")
+        self.assertEqual(request.get_method(), "GET")
+        self.assertEqual(presets[0].display_name, "Preset One")
+
+    @patch("thecakeisapi.bose.urlopen")
+    def test_selects_each_physical_preset_with_press_and_release(self, urlopen_mock) -> None:
+        urlopen_mock.return_value.__enter__.return_value.read.return_value = b"<status>OK</status>"
+        client = BoseNowPlayingClient("192.168.42.101")
+
+        for preset_id in range(1, 7):
+            client.select_preset(preset_id)
+
+        requests = [call.args[0] for call in urlopen_mock.call_args_list]
+        self.assertEqual(len(requests), 12)
+        for preset_id in range(1, 7):
+            press_request = requests[(preset_id - 1) * 2]
+            release_request = requests[(preset_id - 1) * 2 + 1]
+            self.assertEqual(press_request.full_url, "http://192.168.42.101:8090/key")
+            self.assertEqual(press_request.get_method(), "POST")
+            self.assertEqual(
+                press_request.data.decode("utf-8"),
+                f'<key state="press" sender="TheCakeIsAPI">PRESET_{preset_id}</key>',
+            )
+            self.assertEqual(
+                release_request.data.decode("utf-8"),
+                f'<key state="release" sender="TheCakeIsAPI">PRESET_{preset_id}</key>',
+            )
+
+    def test_invalid_preset_id_is_rejected_before_transport(self) -> None:
+        client = BoseNowPlayingClient("192.168.42.101")
+
+        for preset_id in (0, 7):
+            with self.assertRaisesRegex(BosePlaybackError, "between 1 and 6"):
+                client.select_preset(preset_id)
+
+
 class BoseNowPlayingTests(unittest.TestCase):
     def test_external_display_name_prefers_track_then_station_then_item(self) -> None:
         status = parse_now_playing(
@@ -723,6 +824,155 @@ class PlaybackCleanupTests(unittest.TestCase):
 
             self.assertTrue(app.state.bose_client.stopped)
             self.assertEqual(local_player.played_paths, ["first.mp3"])
+
+
+class BosePresetApiTests(unittest.TestCase):
+    def test_preset_endpoint_returns_ordered_public_slots_without_location(self) -> None:
+        with temp_music_app() as app:
+            app.state.bose_now_playing_client = FakePresetClient(
+                presets=parse_presets(
+                    "<presets>"
+                    '<preset id="2"><ContentItem source="TUNEIN" '
+                    'location="station:private"><itemName>Second</itemName>'
+                    "</ContentItem></preset>"
+                    '<preset id="1"><ContentItem source="LOCAL_INTERNET_RADIO" '
+                    'location="file:private"><itemName>First</itemName>'
+                    "</ContentItem></preset>"
+                    "</presets>",
+                ),
+            )
+
+            response = route_endpoint(
+                app,
+                "/api/player/bose/presets",
+                "GET",
+            )()
+
+            self.assertEqual(
+                [preset["id"] for preset in response["presets"]],
+                [1, 2, 3, 4, 5, 6],
+            )
+            self.assertEqual(response["presets"][0]["display_name"], "First")
+            self.assertNotIn("location", response["presets"][0])
+            self.assertFalse(response["presets"][5]["available"])
+
+    def test_preset_endpoint_reports_unreachable_speaker_cleanly(self) -> None:
+        with temp_music_app() as app:
+            app.state.bose_now_playing_client = FakePresetClient(
+                fetch_error=BosePlaybackError("Bose presets request failed: offline"),
+            )
+
+            with self.assertRaises(HTTPException) as raised:
+                route_endpoint(app, "/api/player/bose/presets", "GET")()
+
+            self.assertEqual(raised.exception.status_code, 503)
+            self.assertIn("offline", raised.exception.detail)
+
+    def test_invalid_preset_ids_are_rejected_by_activation_endpoint(self) -> None:
+        with temp_music_app() as app:
+            endpoint = route_endpoint(
+                app,
+                "/api/player/bose/presets/{preset_id}/activate",
+                "POST",
+            )
+
+            for preset_id in (0, 7):
+                with self.assertRaises(HTTPException) as raised:
+                    endpoint(preset_id)
+                self.assertEqual(raised.exception.status_code, 400)
+
+    def test_preset_selection_clears_queue_and_app_ownership(self) -> None:
+        with temp_music_app() as app:
+            app.state.local_player = FakeLocalPlayer()
+            app.state.playback_queue.set_tracks(
+                [
+                    QueueTrack(path="first.mp3", name="first.mp3"),
+                    QueueTrack(path="second.mp3", name="second.mp3"),
+                ],
+                "first.mp3",
+            )
+            app.state.active_output = "bose"
+            app.state.bose_playback_state = app_owned_bose_state(
+                confirmed_start_timestamp=time.time() - 2,
+                duration_seconds=10.0,
+            )
+            preset_client = FakePresetClient()
+            app.state.bose_now_playing_client = preset_client
+
+            status = route_endpoint(
+                app,
+                "/api/player/bose/presets/{preset_id}/activate",
+                "POST",
+            )(3)
+
+            self.assertEqual(preset_client.selected_ids, [3])
+            self.assertEqual(app.state.local_player.stop_count, 1)
+            self.assertEqual(status["queue"], [])
+            self.assertIsNone(status["now_playing"])
+            self.assertEqual(status["active_output"], "bose")
+            self.assertTrue(status["bose"]["external_playback_active"])
+            self.assertFalse(app.state.bose_playback_state.has_app_ownership_context)
+            self.assertIsNone(app.state.bose_playback_state.track_path)
+
+    def test_selected_preset_remains_external_after_now_playing_observation(self) -> None:
+        with temp_music_app() as app:
+            preset_client = FakePresetClient(
+                status_xml=(
+                    '<nowPlaying source="TUNEIN">'
+                    '<ContentItem source="TUNEIN"><itemName>Preset radio</itemName>'
+                    "</ContentItem><stationName>Station title</stationName>"
+                    "<playStatus>PLAY_STATE</playStatus></nowPlaying>"
+                ),
+            )
+            app.state.bose_now_playing_client = preset_client
+
+            _select_bose_preset(app, 2)
+            _observe_external_bose_playback(app, now_monotonic=10.0)
+
+            state = app.state.bose_playback_state
+            self.assertTrue(state.external_playback_active)
+            self.assertFalse(state.has_app_ownership_context)
+            self.assertEqual(state.external_display_name, "Station title")
+            self.assertEqual(state.external_source, "TUNEIN")
+
+    def test_app_track_after_preset_establishes_fresh_ownership(self) -> None:
+        with temp_music_app() as app:
+            app.state.bose_playback_state = app_owned_bose_state(
+                ownership_stream_url=test_stream_url("first.mp3", "old-playback-id"),
+            )
+            app.state.bose_now_playing_client = FakePresetClient()
+
+            _select_bose_preset(app, 4)
+            self.assertFalse(app.state.bose_playback_state.has_app_ownership_context)
+
+            app.state.bose_playback_id_factory = lambda: "fresh-playback-id"
+            app.state.bose_now_playing_client = FakeOwnedNowPlayingClient(app)
+            _play_bose_track(app, QueueTrack(path="second.mp3", name="second.mp3"))
+
+            state = app.state.bose_playback_state
+            self.assertTrue(state.ownership_confirmed)
+            self.assertFalse(state.external_playback_active)
+            self.assertIn("playback_id=fresh-playback-id", state.ownership_stream_url)
+            self.assertNotIn("old-playback-id", state.ownership_stream_url)
+
+    def test_failed_preset_selection_clears_stale_ownership_safely(self) -> None:
+        with temp_music_app() as app:
+            app.state.playback_queue.set_tracks(
+                [QueueTrack(path="first.mp3", name="first.mp3")],
+                "first.mp3",
+            )
+            app.state.bose_playback_state = app_owned_bose_state()
+            app.state.bose_now_playing_client = FakePresetClient(
+                select_error=BosePlaybackError("speaker unavailable"),
+            )
+
+            with self.assertRaisesRegex(BosePlaybackError, "speaker unavailable"):
+                _select_bose_preset(app, 1)
+
+            self.assertFalse(app.state.bose_playback_state.has_app_ownership_context)
+            self.assertFalse(app.state.bose_playback_state.external_playback_active)
+            self.assertEqual(app.state.playback_queue.as_dict()["tracks"], [])
+            self.assertEqual(app.state.bose_playback_state.state, "stopped")
 
 
 class BosePlaybackOwnershipTests(unittest.TestCase):
@@ -1555,6 +1805,34 @@ class FakeBoseClient:
 
     def resume(self) -> None:
         self.resumed = True
+
+
+class FakePresetClient:
+    def __init__(
+        self,
+        presets: list[BosePreset] | None = None,
+        status_xml: str = '<nowPlaying source="STANDBY"></nowPlaying>',
+        fetch_error: Exception | None = None,
+        select_error: Exception | None = None,
+    ) -> None:
+        self.presets = presets or parse_presets("<presets />")
+        self.status_xml = status_xml
+        self.fetch_error = fetch_error
+        self.select_error = select_error
+        self.selected_ids: list[int] = []
+
+    def fetch_presets(self) -> list[BosePreset]:
+        if self.fetch_error:
+            raise self.fetch_error
+        return self.presets
+
+    def select_preset(self, preset_id: int) -> None:
+        if self.select_error:
+            raise self.select_error
+        self.selected_ids.append(preset_id)
+
+    def fetch_status(self) -> BoseNowPlayingStatus:
+        return parse_now_playing(self.status_xml)
 
 
 class FakeLocalPlayer:

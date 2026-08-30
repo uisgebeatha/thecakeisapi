@@ -184,6 +184,7 @@
 - [x] Refine the Settings UI for compact desktop and mobile use in v0.4.6.
 - [x] Resolve Bose physical-preset ownership ambiguity with per-playback URL markers.
 - [x] Display Bose track, station, item, or source metadata for external playback.
+- [x] Add on-demand backend reading and activation for Bose physical presets 1-6.
 - [ ] Add Bose preset browsing and selection from the web interface.
 - [ ] Add library search.
 - [ ] Investigate USB enclosure disconnect behavior.
