@@ -158,7 +158,7 @@ h1 {
 }
 
 .bose-presets-dialog {
-  width: min(32rem, calc(100% - 1.5rem));
+  width: min(27rem, calc(100% - 1.5rem));
   border: 1px solid var(--border);
   border-radius: 0.4rem;
   padding: 0;
@@ -172,38 +172,8 @@ h1 {
   background: rgba(20, 24, 28, 0.62);
 }
 
-.bose-presets-dialog-header {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 1rem;
-  padding: 0.75rem 0.9rem;
-  border-bottom: 1px solid var(--border);
-  background: var(--surface);
-}
-
-.bose-presets-dialog-header h2 {
-  font-size: 1.05rem;
-}
-
-.bose-presets-close-button {
-  display: inline-grid;
-  place-items: center;
-  flex: 0 0 auto;
-  width: 2.5rem;
-  height: 2.5rem;
-  border: 1px solid #929ba6;
-  border-radius: 50%;
-  padding: 0;
-  background: var(--surface);
-  color: inherit;
-  cursor: pointer;
-  font-size: 1.2rem;
-  line-height: 1;
-}
-
 .bose-presets-dialog-body {
-  padding: 0.8rem 0.9rem 0.9rem;
+  padding: 0.75rem;
 }
 
 .bose-presets-message {
@@ -212,19 +182,23 @@ h1 {
   font-size: 0.78rem;
 }
 
+.bose-presets-message:empty {
+  display: none;
+}
+
 .bose-remote-layout {
   display: grid;
   grid-template-columns: 2.8rem minmax(0, 1fr) 2.8rem;
   align-items: stretch;
-  gap: 0.65rem;
+  gap: 0.25rem;
   min-width: 0;
 }
 
 .bose-future-controls {
-  display: flex;
-  flex-direction: column;
-  justify-content: space-between;
-  gap: 0.6rem;
+  display: grid;
+  grid-template-rows: repeat(2, minmax(4.2rem, auto));
+  place-items: center;
+  gap: 0.5rem;
 }
 
 .bose-future-control {
@@ -288,9 +262,7 @@ h1 {
 }
 
 .bose-preset-button:not(:disabled):hover,
-.bose-preset-button:not(:disabled):focus-visible,
-.bose-presets-close-button:hover,
-.bose-presets-close-button:focus-visible {
+.bose-preset-button:not(:disabled):focus-visible {
   border-color: var(--accent);
   background: var(--accent-soft);
 }
@@ -1254,7 +1226,6 @@ button.entry-details-button {
     max-width: calc(100% - 0.5rem);
   }
 
-  .bose-presets-dialog-header,
   .bose-presets-dialog-body {
     padding-right: 0.75rem;
     padding-left: 0.75rem;
@@ -1262,7 +1233,7 @@ button.entry-details-button {
 
   .bose-remote-layout {
     grid-template-columns: 2.75rem minmax(0, 1fr) 2.75rem;
-    gap: 0.4rem;
+    gap: 0.2rem;
   }
 
   .bose-future-control {
@@ -1270,6 +1241,7 @@ button.entry-details-button {
     min-height: 2.75rem;
   }
 
+  .bose-future-controls,
   .bose-preset-grid {
     grid-template-rows: repeat(2, minmax(3.8rem, auto));
     gap: 0.35rem;
@@ -1411,7 +1383,6 @@ button.entry-details-button {
 
   .nav-button,
   .bose-presets-open-button,
-  .bose-presets-close-button,
   .bose-preset-button,
   .bose-future-control,
   .settings-open-button,
@@ -1427,7 +1398,6 @@ button.entry-details-button {
   }
 
   .bose-presets-dialog,
-  .bose-presets-dialog-header,
   .settings-dialog,
   .settings-dialog-header {
     border-color: var(--border);

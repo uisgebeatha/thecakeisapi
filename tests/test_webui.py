@@ -85,7 +85,7 @@ class WebUiTransportTests(unittest.TestCase):
         self.assertEqual(app_js.count("fetch(playbackStatusUrl())"), 2)
         self.assertIn("refreshPlaybackStatus();", app_js)
         self.assertIn(
-            "/static/app.js?v=__THECAKEISAPI_VERSION__&state=bose-presets",
+            "/static/app.js?v=__THECAKEISAPI_VERSION__&state=bose-panel-layout",
             index_html,
         )
 
@@ -515,7 +515,7 @@ class WebUiBosePresetTests(unittest.TestCase):
         self.assertIn('aria-label="Bose Presets"', index_html)
         self.assertIn('<svg class="topbar-button-icon"', index_html)
         self.assertIn(
-            "/static/styles.css?v=__THECAKEISAPI_VERSION__&state=bose-presets",
+            "/static/styles.css?v=__THECAKEISAPI_VERSION__&state=bose-panel-layout",
             index_html,
         )
         self.assertIn(
@@ -540,6 +540,19 @@ class WebUiBosePresetTests(unittest.TestCase):
         self.assertIn('aria-label="Volume up unavailable"', dialog_html)
         self.assertIn('aria-label="Volume down unavailable"', dialog_html)
 
+    def test_dialog_has_no_visible_header_or_close_button(self) -> None:
+        index_html = INDEX_HTML.read_text(encoding="utf-8")
+        app_js = APP_JS.read_text(encoding="utf-8")
+
+        self.assertIn(
+            'class="bose-presets-dialog" aria-label="Bose Presets" tabindex="-1"',
+            index_html,
+        )
+        self.assertNotIn('class="bose-presets-dialog-header"', index_html)
+        self.assertNotIn('id="bose-presets-close-button"', index_html)
+        self.assertNotIn("bosePresetsCloseButton", app_js)
+        self.assertIn("bosePresetsDialog.focus();", app_js)
+
     def test_presets_are_loaded_only_when_the_dialog_opens(self) -> None:
         app_js = APP_JS.read_text(encoding="utf-8")
 
@@ -549,6 +562,12 @@ class WebUiBosePresetTests(unittest.TestCase):
         self.assertIn("renderBosePresets(data.presets || []);", app_js)
         self.assertIn('button.disabled = !available;', app_js)
         self.assertIn('resetBosePresetButtons("Unavailable");', app_js)
+        self.assertNotIn("physical presets available", app_js)
+        self.assertIn(
+            'bosePresetsMessage.textContent = availableCount ? "" : '
+            '"No physical presets are assigned";',
+            app_js,
+        )
 
     def test_preset_activation_posts_then_closes_and_refreshes_status(self) -> None:
         app_js = APP_JS.read_text(encoding="utf-8")
@@ -566,6 +585,8 @@ class WebUiBosePresetTests(unittest.TestCase):
         index_html = INDEX_HTML.read_text(encoding="utf-8")
         app_js = APP_JS.read_text(encoding="utf-8")
 
+        self.assertIn("<span>Now Playing</span>", index_html)
+        self.assertNotIn("Current Bose item", index_html)
         self.assertIn('id="bose-current-item-title"', index_html)
         self.assertIn("playbackState?.bose?.external_playback_active", app_js)
         self.assertIn(
@@ -597,7 +618,14 @@ class WebUiBosePresetTests(unittest.TestCase):
         self.assertRegex(
             styles_css,
             r"\.bose-remote-layout\s*\{[^}]*"
-            r"grid-template-columns: 2\.8rem minmax\(0, 1fr\) 2\.8rem;",
+            r"grid-template-columns: 2\.8rem minmax\(0, 1fr\) 2\.8rem;[^}]*"
+            r"gap: 0\.25rem;",
+        )
+        self.assertRegex(
+            styles_css,
+            r"\.bose-future-controls\s*\{[^}]*"
+            r"grid-template-rows: repeat\(2, minmax\(4\.2rem, auto\)\);[^}]*"
+            r"gap: 0\.5rem;",
         )
         self.assertRegex(
             styles_css,
@@ -607,6 +635,7 @@ class WebUiBosePresetTests(unittest.TestCase):
         )
         self.assertIn("width: calc(100% - 0.5rem);", mobile_rules)
         self.assertIn("grid-template-columns: 2.75rem minmax(0, 1fr) 2.75rem;", mobile_rules)
+        self.assertIn("gap: 0.2rem;", mobile_rules)
         self.assertIn("overflow-wrap: anywhere;", styles_css)
         self.assertIn("-webkit-line-clamp: 2;", styles_css)
 

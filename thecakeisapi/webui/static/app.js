@@ -22,7 +22,6 @@ const nextButton = document.querySelector("#next-button");
 const repeatButton = document.querySelector("#repeat-button");
 const bosePresetsButton = document.querySelector("#bose-presets-button");
 const bosePresetsDialog = document.querySelector("#bose-presets-dialog");
-const bosePresetsCloseButton = document.querySelector("#bose-presets-close-button");
 const bosePresetsMessage = document.querySelector("#bose-presets-message");
 const bosePresetButtons = [...document.querySelectorAll(".bose-preset-button")];
 const boseCurrentItemTitle = document.querySelector("#bose-current-item-title");
@@ -621,7 +620,7 @@ function openBosePresets() {
 
   boseCurrentItemTitle.textContent = currentBoseItemTitle();
   bosePresetsDialog.showModal();
-  bosePresetsCloseButton.focus();
+  bosePresetsDialog.focus();
   loadBosePresets();
 }
 
@@ -639,9 +638,7 @@ async function loadBosePresets() {
 
     renderBosePresets(data.presets || []);
     const availableCount = (data.presets || []).filter((preset) => preset.available).length;
-    bosePresetsMessage.textContent = availableCount
-      ? `${availableCount} physical presets available`
-      : "No physical presets are assigned";
+    bosePresetsMessage.textContent = availableCount ? "" : "No physical presets are assigned";
   } catch (error) {
     resetBosePresetButtons("Unavailable");
     bosePresetsMessage.textContent = `Could not load presets: ${error.message}`;
@@ -990,7 +987,6 @@ outputSelector.addEventListener("change", () => {
 });
 
 bosePresetsButton.addEventListener("click", openBosePresets);
-bosePresetsCloseButton.addEventListener("click", () => bosePresetsDialog.close());
 bosePresetsDialog.addEventListener("click", closeBosePresetsFromBackdrop);
 for (const button of bosePresetButtons) {
   button.addEventListener("click", () => activateBosePreset(button));

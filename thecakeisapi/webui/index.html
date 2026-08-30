@@ -4,8 +4,8 @@
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <title>thecakeisapi</title>
-    <link rel="stylesheet" href="/static/styles.css?v=__THECAKEISAPI_VERSION__&state=bose-presets">
-    <script src="/static/app.js?v=__THECAKEISAPI_VERSION__&state=bose-presets" defer></script>
+    <link rel="stylesheet" href="/static/styles.css?v=__THECAKEISAPI_VERSION__&state=bose-panel-layout">
+    <script src="/static/app.js?v=__THECAKEISAPI_VERSION__&state=bose-panel-layout" defer></script>
   </head>
   <body>
     <main class="shell">
@@ -120,12 +120,7 @@
       </footer>
     </main>
 
-    <dialog id="bose-presets-dialog" class="bose-presets-dialog" aria-labelledby="bose-presets-heading">
-      <header class="bose-presets-dialog-header">
-        <h2 id="bose-presets-heading">Bose Presets</h2>
-        <button id="bose-presets-close-button" class="bose-presets-close-button" type="button" aria-label="Close Bose Presets" title="Close">&times;</button>
-      </header>
-
+    <dialog id="bose-presets-dialog" class="bose-presets-dialog" aria-label="Bose Presets" tabindex="-1">
       <div class="bose-presets-dialog-body">
         <p id="bose-presets-message" class="message bose-presets-message" aria-live="polite">Loading presets...</p>
 
@@ -169,7 +164,7 @@
         </div>
 
         <div class="bose-current-item">
-          <span>Current Bose item</span>
+          <span>Now Playing</span>
           <strong id="bose-current-item-title">No current Bose item</strong>
         </div>
       </div>
