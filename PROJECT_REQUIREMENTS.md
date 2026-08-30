@@ -70,7 +70,10 @@ Build a minimal proof of concept:
 - Component status is read-only and may report TheCakeIsAPI, AfterTouch `/health`, and `soundtouch-cli --version` values without making playback depend on those probes.
 - The v0.4.4 Settings UI may request a confirmed application restart only when the systemd deployment explicitly enables it.
 - Application restart must target only the running TheCakeIsAPI process and rely on its existing systemd restart policy; do not expose shell commands or general service management.
-- Compact icon-based mobile playback controls remain deferred to v0.4.5.
+- Desktop and mobile playback controls use the same compact inline SVG icon vocabulary as of v0.4.5.
+- Play and Pause share one state-aware primary control; repeat state remains visibly selected and accessible.
+- The Bose / Pi 4 Local selector remains segmented but uses a compact presentation.
+- Further Settings UI refinement remains deferred.
 
 ## Current Deployment Decisions
 

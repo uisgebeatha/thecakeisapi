@@ -67,13 +67,39 @@
           </fieldset>
         </section>
         <section class="transport" aria-label="Playback controls">
-          <button id="previous-button" class="control-button" type="button" aria-label="Previous track">Previous</button>
-          <button id="play-button" class="control-button primary" type="button">Play</button>
-          <button id="pause-button" class="control-button" type="button">Pause</button>
-          <button id="stop-button" class="control-button" type="button">Stop</button>
-          <button id="next-button" class="control-button" type="button" aria-label="Next track">Next</button>
-          <button id="repeat-button" class="control-button" type="button" aria-pressed="false">
-            Repeat Track
+          <button id="previous-button" class="control-button transport-button" type="button" aria-label="Previous track" title="Previous track">
+            <svg class="transport-icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+              <path d="M6 5v14"></path>
+              <path class="icon-fill" d="M18 5 9 12l9 7V5Z"></path>
+            </svg>
+          </button>
+          <button id="play-button" class="control-button transport-button playback-toggle primary" type="button" data-control-state="play" aria-label="Play" title="Play">
+            <svg class="transport-icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+              <path class="icon-play icon-fill" d="M8 5.5v13l10-6.5L8 5.5Z"></path>
+              <g class="icon-pause">
+                <rect x="7" y="5.5" width="3.5" height="13" rx="1"></rect>
+                <rect x="13.5" y="5.5" width="3.5" height="13" rx="1"></rect>
+              </g>
+            </svg>
+          </button>
+          <button id="stop-button" class="control-button transport-button" type="button" aria-label="Stop" title="Stop">
+            <svg class="transport-icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+              <rect class="icon-fill" x="6.5" y="6.5" width="11" height="11" rx="1"></rect>
+            </svg>
+          </button>
+          <button id="next-button" class="control-button transport-button" type="button" aria-label="Next track" title="Next track">
+            <svg class="transport-icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+              <path class="icon-fill" d="m6 5 9 7-9 7V5Z"></path>
+              <path d="M18 5v14"></path>
+            </svg>
+          </button>
+          <button id="repeat-button" class="control-button transport-button" type="button" data-active="false" aria-label="Repeat track off" title="Repeat track off" aria-pressed="false">
+            <svg class="transport-icon repeat-icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+              <path d="M4 9a7 7 0 0 1 12-4l3 3"></path>
+              <path d="M19 4v4h-4"></path>
+              <path d="M20 15a7 7 0 0 1-12 4l-3-3"></path>
+              <path d="M5 20v-4h4"></path>
+            </svg>
           </button>
         </section>
         <section class="timer" aria-label="Track timer">

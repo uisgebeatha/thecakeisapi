@@ -10,7 +10,7 @@
   --accent: #236b4b;
   --accent-soft: #e5f2eb;
   --focus: #356da8;
-  --player-height: 9.25rem;
+  --player-height: 7.75rem;
 }
 
 * {
@@ -593,15 +593,15 @@ button.entry-details-button {
   bottom: 0;
   left: 0;
   display: grid;
-  grid-template-columns: minmax(12rem, 0.75fr) minmax(30rem, 1.7fr) minmax(18rem, 0.8fr);
+  grid-template-columns: minmax(13rem, 0.85fr) minmax(17rem, 1fr) minmax(14rem, 0.72fr);
   grid-template-areas:
     "now transport output"
     "now timer output";
   align-items: center;
-  gap: 0.65rem 1.25rem;
+  gap: 0.45rem 1.1rem;
   min-height: var(--player-height);
   border-top: 1px solid #c3c8c2;
-  padding: 0.85rem clamp(0.85rem, 2vw, 1.5rem);
+  padding: 0.6rem clamp(0.85rem, 2vw, 1.5rem);
   background: var(--surface);
   box-shadow: 0 -0.25rem 0.85rem rgba(24, 28, 32, 0.09);
 }
@@ -632,7 +632,7 @@ button.entry-details-button {
 .output-panel {
   grid-area: output;
   display: grid;
-  gap: 0.4rem;
+  gap: 0.25rem;
   min-width: 0;
 }
 
@@ -645,14 +645,14 @@ button.entry-details-button {
 
 .output-label {
   color: var(--muted);
-  font-size: 0.78rem;
+  font-size: 0.74rem;
   font-weight: 750;
 }
 
 .active-output {
   overflow: hidden;
   color: var(--muted);
-  font-size: 0.75rem;
+  font-size: 0.72rem;
   font-weight: 650;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -666,7 +666,7 @@ button.entry-details-button {
 .output-options {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 0.35rem;
+  gap: 0.25rem;
   min-width: 0;
   margin: 0;
   padding: 0;
@@ -676,7 +676,7 @@ button.entry-details-button {
 .output-option {
   position: relative;
   min-width: 0;
-  min-height: 2.75rem;
+  min-height: 2.25rem;
   cursor: pointer;
 }
 
@@ -693,12 +693,13 @@ button.entry-details-button {
   align-items: center;
   justify-content: center;
   width: 100%;
-  min-height: 2.75rem;
+  min-height: 2.25rem;
   border: 1px solid #929ba6;
-  border-radius: 0.35rem;
+  border-radius: 0.3rem;
+  padding: 0.25rem 0.45rem;
   background: var(--surface-subtle);
   color: #3d4651;
-  font-size: 0.78rem;
+  font-size: 0.74rem;
   font-weight: 700;
   text-align: center;
 }
@@ -717,30 +718,71 @@ button.entry-details-button {
 
 .transport {
   grid-area: transport;
-  display: grid;
-  grid-template-columns: repeat(6, minmax(4.5rem, 1fr));
-  gap: 0.4rem;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-wrap: nowrap;
+  gap: clamp(0.3rem, 0.8vw, 0.55rem);
   min-width: 0;
 }
 
 .control-button {
-  min-width: 0;
-  min-height: 2.75rem;
+  display: inline-grid;
+  place-items: center;
+  flex: 0 0 auto;
+  width: 2.75rem;
+  height: 2.75rem;
   border: 1px solid #929ba6;
-  border-radius: 0.35rem;
-  padding: 0.45rem 0.55rem;
+  border-radius: 50%;
+  padding: 0;
   background: #f4f5f3;
   color: #1c1f23;
   cursor: pointer;
-  font-size: 0.82rem;
-  font-weight: 750;
-  overflow-wrap: anywhere;
 }
 
 .control-button.primary {
+  width: 3.5rem;
+  height: 3.5rem;
   border-color: #33845b;
   background: var(--accent-soft);
   color: #216343;
+}
+
+.transport-icon {
+  width: 1.35rem;
+  height: 1.35rem;
+  fill: none;
+  stroke: currentColor;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  stroke-width: 1.9;
+}
+
+.control-button.primary .transport-icon {
+  width: 1.7rem;
+  height: 1.7rem;
+}
+
+.transport-icon .icon-fill,
+.transport-icon .icon-pause {
+  fill: currentColor;
+  stroke: none;
+}
+
+.playback-toggle .icon-pause {
+  display: none;
+}
+
+.playback-toggle[data-control-state="pause"] .icon-play {
+  display: none;
+}
+
+.playback-toggle[data-control-state="pause"] .icon-pause {
+  display: block;
+}
+
+.repeat-icon {
+  stroke-width: 1.8;
 }
 
 .control-button[data-active="true"] {
@@ -752,6 +794,11 @@ button.entry-details-button {
 .control-button:hover,
 .control-button:focus-visible {
   background: #e8ebed;
+}
+
+.control-button.primary:hover,
+.control-button.primary:focus-visible {
+  background: #d7eadf;
 }
 
 .control-button:disabled {
@@ -803,21 +850,20 @@ button.entry-details-button {
 
 @media (max-width: 1040px) {
   :root {
-    --player-height: 12rem;
+    --player-height: 8.5rem;
   }
 
   .player-bar {
     grid-template-columns: minmax(0, 1fr) minmax(18rem, 0.8fr);
     grid-template-areas:
       "now output"
-      "transport transport"
-      "timer timer";
+      "transport timer";
   }
 }
 
 @media (max-width: 760px) {
   :root {
-    --player-height: 16.5rem;
+    --player-height: 13.5rem;
   }
 
   .topbar {
@@ -855,10 +901,10 @@ button.entry-details-button {
       "transport"
       "timer";
     align-content: center;
-    gap: 0.55rem;
+    gap: 0.4rem;
     min-height: var(--player-height);
-    padding-top: 0.65rem;
-    padding-bottom: max(0.65rem, env(safe-area-inset-bottom));
+    padding-top: 0.55rem;
+    padding-bottom: max(0.55rem, env(safe-area-inset-bottom));
   }
 
   .now-playing {
@@ -869,10 +915,6 @@ button.entry-details-button {
 
   .now-playing .message {
     grid-column: 1 / -1;
-  }
-
-  .transport {
-    grid-template-columns: repeat(3, minmax(0, 1fr));
   }
 
   .settings-fields {
@@ -927,6 +969,10 @@ button.entry-details-button {
   .active-output {
     max-width: 55%;
     text-align: right;
+  }
+
+  .transport {
+    gap: 0.3rem;
   }
 }
 

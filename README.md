@@ -13,7 +13,7 @@ A lightweight self-hosted music player for Raspberry Pi with support for:
 
 The project is designed to remain simple, low-dependency, and easy to run on Raspberry Pi hardware.
 
-Current release: **v0.4.4**.
+Current release: **v0.4.5**.
 
 ## Dependencies
 
@@ -81,7 +81,7 @@ Raspberry Pi 4
 
 ### Playback
 
-The responsive VLC-style browser keeps the folder library and temporary queue visible side by side on desktop and stacks them cleanly on phone-sized screens. On phones, the app header and current library path remain sticky while directory entries scroll beneath them; the Now Playing controls remain fixed at the bottom. Bose SoundTouch is the default choice for new playback; Pi 4 Local remains available in the output switcher. The active output and playback state are shown separately so transport controls remain tied to the backend that is actually playing.
+The responsive VLC-style browser keeps the folder library and temporary queue visible side by side on desktop and stacks them cleanly on phone-sized screens. On phones, the app header and current library path remain sticky while directory entries scroll beneath them; the compact Now Playing controls remain fixed at the bottom. Desktop and phone layouts share a single icon-based Previous, Play/Pause, Stop, Next, and Repeat row. Bose SoundTouch is the default choice for new playback; Pi 4 Local remains available in the smaller segmented output switcher. The active output and playback state are shown separately so transport controls remain tied to the backend that is actually playing.
 
 #### Raspberry Pi Local
 

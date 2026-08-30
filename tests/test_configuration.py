@@ -87,7 +87,7 @@ class SettingsApiTests(unittest.TestCase):
         with temporary_settings_app() as (app, _config_path):
             response = route_endpoint(app, "/api/health", "GET")()
 
-            self.assertEqual(response, {"status": "ok", "version": "0.4.4"})
+            self.assertEqual(response, {"status": "ok", "version": "0.4.5"})
 
 
 class SettingsPersistenceTests(unittest.TestCase):

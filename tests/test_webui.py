@@ -10,35 +10,80 @@ MAIN_PY = Path(__file__).resolve().parents[1] / "thecakeisapi" / "main.py"
 
 
 class WebUiTransportTests(unittest.TestCase):
-    def test_pause_button_becomes_resume_for_any_paused_output(self) -> None:
+    def test_single_play_pause_button_switches_icon_and_accessibility_state(self) -> None:
         app_js = APP_JS.read_text(encoding="utf-8")
+        index_html = INDEX_HTML.read_text(encoding="utf-8")
 
-        self.assertIn('pauseButton.textContent = isPaused ? "Resume" : "Pause";', app_js)
+        self.assertIn('id="play-button"', index_html)
+        self.assertNotIn('id="pause-button"', index_html)
+        self.assertNotIn("pauseButton", app_js)
+        self.assertIn(
+            'const playPauseLabel = isPlaying ? "Pause" : isPaused ? "Resume" : "Play";',
+            app_js,
+        )
+        self.assertIn(
+            'playButton.dataset.controlState = isPlaying ? "pause" : "play";',
+            app_js,
+        )
+        self.assertIn('playButton.setAttribute("aria-label", playPauseLabel);', app_js)
+        self.assertIn("playButton.title = playPauseLabel;", app_js)
         self.assertIn(
             'return playbackState?.state === "paused" || playbackState?.paused === true;',
             app_js,
         )
-        self.assertIn(
-            "playButton.disabled = !hasTrack || isPlaying || isPaused;",
-            app_js,
-        )
 
-    def test_pause_button_resumes_local_and_bose_outputs(self) -> None:
+    def test_play_pause_button_uses_existing_output_specific_transport_endpoints(self) -> None:
         app_js = APP_JS.read_text(encoding="utf-8")
 
-        self.assertIn('sendTransportCommand("/api/player/bose/resume");', app_js)
-        self.assertIn('sendTransportCommand("/api/player/local/resume");', app_js)
-        self.assertIn('sendTransportCommand("/api/player/bose/pause");', app_js)
-        self.assertIn('sendTransportCommand("/api/player/local/pause");', app_js)
+        self.assertIn(
+            'const action = lastPlaybackState?.state === "playing" ? "pause" : "resume";',
+            app_js,
+        )
+        self.assertIn("sendTransportCommand(transportEndpoint(action));", app_js)
+        self.assertIn('return `/api/player/bose/${action}`;', app_js)
+        self.assertIn('return `/api/player/local/${action}`;', app_js)
 
     def test_play_button_is_available_for_stopped_bose_queue_item(self) -> None:
         app_js = APP_JS.read_text(encoding="utf-8")
 
-        self.assertNotIn(
-            "playButton.disabled = isBose || !hasTrack || isPlaying || isPaused;",
+        self.assertIn("playButton.disabled = !hasTrack || isStarting;", app_js)
+        self.assertNotIn("playButton.disabled = !hasTrack || isPlaying", app_js)
+
+    def test_transport_uses_five_inline_svg_buttons_without_visible_word_labels(self) -> None:
+        index_html = INDEX_HTML.read_text(encoding="utf-8")
+        transport_html = index_html.split(
+            '<section class="transport" aria-label="Playback controls">',
+            1,
+        )[1].split("</section>", 1)[0]
+
+        for button_id in (
+            "previous-button",
+            "play-button",
+            "stop-button",
+            "next-button",
+            "repeat-button",
+        ):
+            self.assertIn(f'id="{button_id}"', transport_html)
+        self.assertEqual(transport_html.count('<svg class="transport-icon'), 5)
+        self.assertNotIn('id="pause-button"', transport_html)
+        for visible_label in ("Play", "Pause", "Stop", "Previous", "Next", "Repeat Track"):
+            self.assertNotIn(f">{visible_label}<", transport_html)
+
+    def test_transport_icons_keep_accessible_labels_and_repeat_state(self) -> None:
+        index_html = INDEX_HTML.read_text(encoding="utf-8")
+        app_js = APP_JS.read_text(encoding="utf-8")
+
+        for accessible_label in ("Play", "Stop", "Previous track", "Next track"):
+            self.assertIn(f'aria-label="{accessible_label}"', index_html)
+            self.assertIn(f'title="{accessible_label}"', index_html)
+        self.assertIn('aria-label="Repeat track off"', index_html)
+        self.assertIn('aria-pressed="false"', index_html)
+        self.assertIn(
+            'repeatButton.dataset.active = playbackState.repeat_track ? "true" : "false";',
             app_js,
         )
-        self.assertIn("sendTransportCommand(transportEndpoint(\"resume\"));", app_js)
+        self.assertIn('repeatButton.setAttribute("aria-pressed"', app_js)
+        self.assertIn('repeatButton.setAttribute("aria-label", repeatLabel);', app_js)
 
     def test_bose_is_the_default_playback_output(self) -> None:
         app_js = APP_JS.read_text(encoding="utf-8")
@@ -120,7 +165,7 @@ class WebUiTransportTests(unittest.TestCase):
         app_js = APP_JS.read_text(encoding="utf-8")
         styles_css = STYLES_CSS.read_text(encoding="utf-8")
 
-        self.assertIn('__version__ = "0.4.4"', package_init)
+        self.assertIn('__version__ = "0.4.5"', package_init)
         self.assertIn("version=__version__", main_py)
         self.assertIn('"version": __version__', main_py)
         self.assertNotIn("0.4.0", index_html)
@@ -132,7 +177,29 @@ class WebUiTransportTests(unittest.TestCase):
 
         self.assertIn("grid-template-columns: minmax(0, 1fr) clamp(", styles_css)
         self.assertIn("@media (max-width: 760px)", styles_css)
-        self.assertIn("grid-template-columns: repeat(3, minmax(0, 1fr));", styles_css)
+        self.assertRegex(
+            styles_css,
+            r"\.transport\s*\{[^}]*display: flex;[^}]*flex-wrap: nowrap;",
+        )
+
+    def test_transport_and_output_selector_use_compact_stable_dimensions(self) -> None:
+        styles_css = STYLES_CSS.read_text(encoding="utf-8")
+
+        self.assertRegex(
+            styles_css,
+            r"\.control-button\s*\{[^}]*width: 2\.75rem;[^}]*height: 2\.75rem;",
+        )
+        self.assertRegex(
+            styles_css,
+            r"\.control-button\.primary\s*\{[^}]*width: 3\.5rem;"
+            r"[^}]*height: 3\.5rem;",
+        )
+        self.assertRegex(
+            styles_css,
+            r"\.output-option-label\s*\{[^}]*min-height: 2\.25rem;",
+        )
+        self.assertIn("--player-height: 13.5rem;", styles_css)
+        self.assertIn("overflow-x: hidden;", styles_css)
 
     def test_mobile_header_and_library_navigation_are_sticky(self) -> None:
         styles_css = STYLES_CSS.read_text(encoding="utf-8")

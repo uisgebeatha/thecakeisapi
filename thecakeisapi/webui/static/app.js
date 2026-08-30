@@ -17,7 +17,6 @@ const clearQueueButton = document.querySelector("#clear-queue-button");
 const upButton = document.querySelector("#up-button");
 const previousButton = document.querySelector("#previous-button");
 const playButton = document.querySelector("#play-button");
-const pauseButton = document.querySelector("#pause-button");
 const stopButton = document.querySelector("#stop-button");
 const nextButton = document.querySelector("#next-button");
 const repeatButton = document.querySelector("#repeat-button");
@@ -463,17 +462,21 @@ function updateTransportButtons(playbackState) {
   const hasTrack = Boolean(playbackState.now_playing);
   const isPlaying = playbackState.state === "playing";
   const isPaused = isPausedPlayback(playbackState);
+  const isStarting = playbackState.state === "starting";
+  const playPauseLabel = isPlaying ? "Pause" : isPaused ? "Resume" : "Play";
+  const repeatLabel = playbackState.repeat_track ? "Repeat track on" : "Repeat track off";
 
-  playButton.disabled = !hasTrack || isPlaying || isPaused;
-  pauseButton.disabled = !hasTrack || (!isPlaying && !isPaused);
+  playButton.disabled = !hasTrack || isStarting;
+  playButton.dataset.controlState = isPlaying ? "pause" : "play";
+  playButton.setAttribute("aria-label", playPauseLabel);
+  playButton.title = playPauseLabel;
   stopButton.disabled = !hasTrack || playbackState.state === "stopped";
   previousButton.disabled = !hasTrack;
   nextButton.disabled = !hasTrack;
   repeatButton.dataset.active = playbackState.repeat_track ? "true" : "false";
   repeatButton.setAttribute("aria-pressed", playbackState.repeat_track ? "true" : "false");
-
-  playButton.textContent = "Play";
-  pauseButton.textContent = isPaused ? "Resume" : "Pause";
+  repeatButton.setAttribute("aria-label", repeatLabel);
+  repeatButton.title = repeatLabel;
 }
 
 function isPausedPlayback(playbackState) {
@@ -759,29 +762,8 @@ previousButton.addEventListener("click", () => {
 });
 
 playButton.addEventListener("click", () => {
-  sendTransportCommand(transportEndpoint("resume"));
-});
-
-pauseButton.addEventListener("click", () => {
-  const isPaused = isPausedPlayback(lastPlaybackState);
-  const output = transportOutput();
-
-  if (output === "bose" && isPaused) {
-    sendTransportCommand("/api/player/bose/resume");
-    return;
-  }
-
-  if (output === "bose") {
-    sendTransportCommand("/api/player/bose/pause");
-    return;
-  }
-
-  if (isPaused) {
-    sendTransportCommand("/api/player/local/resume");
-    return;
-  }
-
-  sendTransportCommand("/api/player/local/pause");
+  const action = lastPlaybackState?.state === "playing" ? "pause" : "resume";
+  sendTransportCommand(transportEndpoint(action));
 });
 
 stopButton.addEventListener("click", () => {

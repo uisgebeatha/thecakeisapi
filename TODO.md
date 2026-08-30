@@ -133,6 +133,15 @@
 - [x] Keep restart unavailable by default outside the systemd deployment.
 - [x] Defer compact playback controls and output-selector redesign to v0.4.5.
 
+## v0.4.5 - Compact Playback Controls
+
+- [x] Replace desktop and mobile word-based transport controls with inline SVG icons.
+- [x] Merge Play and Pause into one state-aware primary control.
+- [x] Keep Previous, Stop, Next, and Repeat in one compact horizontal row.
+- [x] Preserve repeat selected state and accessible control labels.
+- [x] Reduce the Bose / Pi 4 Local segmented selector height.
+- [x] Condense the fixed Now Playing area without removing playback information.
+
 ## Milestone 5 Deployment
 
 - [x] Add recommended systemd service template for TheCakeIsAPI.
@@ -171,7 +180,11 @@
 - [ ] Consider album artwork support.
 - [ ] Consider volume control.
 - [ ] Consider shuffle mode.
-- [ ] Replace mobile playback text controls with compact icon-based controls.
+- [x] Replace desktop and mobile playback text controls with compact icon-based controls.
+- [ ] Further refine the Settings UI.
+- [ ] Resolve Bose physical-preset ownership ambiguity.
+- [ ] Add library search.
+- [ ] Investigate USB enclosure disconnect behavior.
 
 ## Design Investigation
 
