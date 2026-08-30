@@ -1,4 +1,5 @@
 from pathlib import Path
+from secrets import token_urlsafe
 from threading import Event, Lock, Thread
 
 from fastapi import FastAPI, HTTPException, Request
@@ -114,6 +115,7 @@ def create_app(
     app.state.playback_queue = PlaybackQueue()
     app.state.active_output = "local"
     app.state.bose_playback_state = BosePlaybackState()
+    app.state.bose_playback_id_factory = lambda: token_urlsafe(18)
     app.state.repeat_track = False
     app.state.playback_message = "Stopped"
     app.state.playback_lock = Lock()
@@ -337,9 +339,13 @@ def create_app(
     def stop_bose_playback() -> dict[str, object]:
         try:
             with app.state.playback_lock:
-                _stop_bose_playback(app)
+                stopped = _stop_bose_playback(app)
                 app.state.active_output = "bose"
-                app.state.playback_message = "Stopped Bose playback"
+                app.state.playback_message = (
+                    "Stopped Bose playback"
+                    if stopped
+                    else "Bose playback is controlled externally"
+                )
                 return _playback_status(app)
         except BosePlaybackError as error:
             raise HTTPException(status_code=503, detail=str(error)) from error
@@ -607,6 +613,11 @@ def _play_bose_track(app: FastAPI, track: QueueTrack) -> None:
     app.state.local_player.stop()
     file_path = resolve_audio_file(app.state.settings.music_root, track.path)
     stream_url = build_library_stream_url(app.state.settings.public_base_url, track.path)
+    ownership_stream_url = build_library_stream_url(
+        app.state.settings.public_base_url,
+        track.path,
+        playback_id=app.state.bose_playback_id_factory(),
+    )
     duration_seconds = audio_duration_seconds(file_path)
 
     app.state.bose_playback_state = BosePlaybackState(
@@ -617,10 +628,11 @@ def _play_bose_track(app: FastAPI, track: QueueTrack) -> None:
         paused_elapsed_seconds=None,
         duration_seconds=duration_seconds,
         stream_url=stream_url,
+        ownership_stream_url=ownership_stream_url,
     )
 
     previous_now_playing = _fetch_bose_now_playing(app)
-    playback_request = app.state.bose_client.play_stream(track.name, stream_url)
+    playback_request = app.state.bose_client.play_stream(track.name, ownership_stream_url)
     app.state.bose_playback_state.command = playback_request.command
 
     confirmed_now_playing = _confirm_bose_playback_started(app, previous_now_playing)
@@ -633,23 +645,60 @@ def _play_bose_track(app: FastAPI, track: QueueTrack) -> None:
 
     app.state.bose_playback_state.record_status_poll_started()
     app.state.bose_playback_state.record_status_poll_success()
+    app.state.bose_playback_state.confirm_ownership()
     app.state.bose_playback_state.state = "playing"
     app.state.bose_playback_state.confirmed_start_timestamp = _current_timestamp()
 
 
-def _stop_bose_playback(app: FastAPI) -> None:
+def _stop_bose_playback(app: FastAPI) -> bool:
     if app.state.bose_client is None:
         raise BosePlaybackError("bose_speaker_ip is not configured")
 
+    playback_state = app.state.bose_playback_state
+    if not playback_state.has_app_ownership_context:
+        return False
+
+    if playback_state.ownership_confirmed and app.state.bose_now_playing_client:
+        try:
+            status = app.state.bose_now_playing_client.fetch_status()
+        except BosePlaybackError as error:
+            raise BosePlaybackError(
+                "Could not confirm Bose playback ownership before stopping",
+            ) from error
+
+        if status.appears_to_be_invalid_source or not status.source:
+            raise BosePlaybackError(
+                "Could not confirm Bose playback ownership before stopping",
+            )
+
+        if not (
+            status.appears_to_be_custom_radio
+            and status.matches_stream_url(playback_state.ownership_stream_url or "")
+        ):
+            reason = "Bose playback is active externally"
+            if status.appears_to_be_stopped:
+                reason = "Bose playback stopped externally"
+                playback_state.externally_stopped(reason)
+            else:
+                if status.source:
+                    reason = f"{reason} on {status.source}"
+                playback_state.externally_active(reason)
+            app.state.playback_message = reason
+            return False
+
     app.state.bose_client.stop()
-    app.state.bose_playback_state.stop()
+    playback_state.stop()
+    return True
 
 
 def _pause_bose_playback(app: FastAPI) -> None:
     if app.state.bose_client is None:
         raise BosePlaybackError("bose_speaker_ip is not configured")
 
-    if app.state.bose_playback_state.state != "playing":
+    if (
+        app.state.bose_playback_state.state != "playing"
+        or not app.state.bose_playback_state.has_app_ownership_context
+    ):
         return
 
     app.state.bose_client.pause()
@@ -660,7 +709,10 @@ def _resume_bose_playback(app: FastAPI) -> None:
     if app.state.bose_client is None:
         raise BosePlaybackError("bose_speaker_ip is not configured")
 
-    if app.state.bose_playback_state.state != "paused":
+    if (
+        app.state.bose_playback_state.state != "paused"
+        or not app.state.bose_playback_state.has_app_ownership_context
+    ):
         return
 
     app.state.bose_client.resume()
@@ -721,8 +773,11 @@ def _monitor_playback(app: FastAPI) -> None:
 
 
 def _sync_bose_playback(app: FastAPI) -> None:
-    transition_due = app.state.bose_playback_state.should_auto_advance(
-        app.state.settings.bose_auto_advance_buffer_seconds,
+    transition_due = (
+        app.state.bose_playback_state.ownership_confirmed
+        and app.state.bose_playback_state.should_auto_advance(
+            app.state.settings.bose_auto_advance_buffer_seconds,
+        )
     )
     transition_source_gap = _poll_bose_playback_state(
         app,
@@ -732,6 +787,9 @@ def _sync_bose_playback(app: FastAPI) -> None:
         app.state.bose_playback_state.status_poll_failures > 0
         and not transition_source_gap
     ):
+        return
+
+    if not app.state.bose_playback_state.ownership_confirmed:
         return
 
     if not app.state.bose_playback_state.should_auto_advance(
@@ -800,6 +858,21 @@ def _poll_bose_playback_state(
         _record_bose_status_poll_failure(app, "Bose source transition did not settle")
         return False
 
+    if status.appears_to_be_custom_radio and not status.matches_stream_url(
+        playback_state.ownership_stream_url or "",
+    ):
+        playback_state.record_status_poll_success()
+        if status.appears_to_be_stopped:
+            reason = "Bose playback stopped externally"
+            playback_state.externally_stopped(reason)
+        else:
+            reason = "Bose playback is active externally"
+            if status.source:
+                reason = f"{reason} on {status.source}"
+            playback_state.externally_active(reason)
+        app.state.playback_message = reason
+        return False
+
     if status.appears_to_be_stopped:
         playback_state.record_status_poll_success()
         if (
@@ -818,6 +891,7 @@ def _poll_bose_playback_state(
 
     if status.appears_to_be_custom_radio:
         playback_state.record_status_poll_success()
+        playback_state.confirm_ownership()
         if playback_state.state == "starting":
             playback_state.state = "playing"
             playback_state.confirmed_start_timestamp = _current_timestamp()
@@ -826,8 +900,8 @@ def _poll_bose_playback_state(
 
     if status.source:
         playback_state.record_status_poll_success()
-        reason = f"Bose source changed externally to {status.source}"
-        playback_state.externally_stopped(reason)
+        reason = f"Bose playback is active externally on {status.source}"
+        playback_state.externally_active(reason)
         app.state.playback_message = reason
         return False
 
@@ -860,6 +934,11 @@ def _playback_status(app: FastAPI) -> dict[str, object]:
     player_status = _active_player_status(app)
     queue_status = app.state.playback_queue.as_dict()
     current_track = app.state.playback_queue.current()
+    if (
+        app.state.active_output == "bose"
+        and app.state.bose_playback_state.external_playback_active
+    ):
+        current_track = None
 
     return {
         "active_output": app.state.active_output,
@@ -937,6 +1016,7 @@ def _confirm_bose_playback_started(app: FastAPI, previous_now_playing):
             app.state.settings.bose_start_confirm_timeout_seconds,
             app.state.settings.bose_start_poll_interval_seconds,
             previous_now_playing,
+            app.state.bose_playback_state.ownership_stream_url,
         )
     except BosePlaybackError as error:
         app.state.bose_playback_state.warning = str(error)

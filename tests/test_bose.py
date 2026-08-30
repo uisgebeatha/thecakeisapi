@@ -33,6 +33,53 @@ from thecakeisapi.playlist import QueueTrack
 from thecakeisapi.settings import Settings
 
 
+TEST_PUBLIC_BASE_URL = "http://192.168.42.190:8000"
+TEST_AFTERTOUCH_BASE_URL = "http://bose-controller.local"
+TEST_PLAYBACK_ID = "test-playback-id"
+
+
+def test_stream_url(path: str, playback_id: str = TEST_PLAYBACK_ID) -> str:
+    return build_library_stream_url(
+        TEST_PUBLIC_BASE_URL,
+        path,
+        playback_id=playback_id,
+    )
+
+
+def custom_radio_status(
+    stream_url: str,
+    track_name: str = "Test track",
+    play_status: str = "PLAY_STATE",
+) -> str:
+    encoded_stream_url = base64.b64encode(stream_url.encode("utf-8")).decode("ascii")
+    location = (
+        f"{TEST_AFTERTOUCH_BASE_URL}/custom/v1/playback/"
+        f"{encoded_stream_url}?name={track_name.replace(' ', '+')}"
+    )
+    return (
+        '<nowPlaying source="LOCAL_INTERNET_RADIO">'
+        f'<ContentItem source="LOCAL_INTERNET_RADIO" type="stationurl" '
+        f'location="{location}" sourceAccount="">'
+        f"<itemName>{track_name}</itemName>"
+        "</ContentItem>"
+        f"<track>{track_name}</track>"
+        f"<playStatus>{play_status}</playStatus>"
+        "</nowPlaying>"
+    )
+
+
+def app_owned_bose_state(**overrides) -> BosePlaybackState:
+    values = {
+        "track_path": "first.mp3",
+        "track_name": "first.mp3",
+        "state": "playing",
+        "ownership_stream_url": test_stream_url("first.mp3"),
+        "ownership_confirmed": True,
+    }
+    values.update(overrides)
+    return BosePlaybackState(**values)
+
+
 class AfterTouchClientTests(unittest.TestCase):
     def test_custom_playback_url_uses_base64_encoded_stream_url(self) -> None:
         stream_url = "http://192.168.42.190:8000/api/library/file?path=Album+One%2Fsong.mp3"
@@ -59,6 +106,13 @@ class AfterTouchClientTests(unittest.TestCase):
         self.assertEqual(
             stream_url,
             "http://192.168.42.190:8000/api/library/file?path=Album+One%2Fsong.mp3",
+        )
+
+    def test_library_stream_url_can_include_playback_ownership_marker(self) -> None:
+        self.assertEqual(
+            test_stream_url("Album One/song.mp3"),
+            "http://192.168.42.190:8000/api/library/file"
+            "?path=Album+One%2Fsong.mp3&playback_id=test-playback-id",
         )
 
 
@@ -317,6 +371,41 @@ class SoundTouchCliClientTests(unittest.TestCase):
 
 
 class BoseNowPlayingTests(unittest.TestCase):
+    def test_now_playing_retains_content_metadata_and_matches_tagged_stream(self) -> None:
+        stream_url = test_stream_url("first.mp3")
+
+        status = parse_now_playing(custom_radio_status(stream_url, "First"))
+
+        self.assertEqual(status.source, "LOCAL_INTERNET_RADIO")
+        self.assertEqual(status.source_account, "")
+        self.assertEqual(status.content_type, "stationurl")
+        self.assertIn("/custom/v1/playback/", status.content_location)
+        self.assertTrue(status.matches_stream_url(stream_url))
+        self.assertFalse(status.matches_stream_url(test_stream_url("second.mp3")))
+
+    def test_expected_stream_marker_is_required_for_ownership_confirmation(self) -> None:
+        app_stream_url = test_stream_url("first.mp3")
+        preset_stream_url = build_library_stream_url(
+            TEST_PUBLIC_BASE_URL,
+            "first.mp3",
+        )
+        client = FakeNowPlayingClient(
+            [
+                custom_radio_status(preset_stream_url, "Old preset"),
+                custom_radio_status(app_stream_url, "First"),
+            ],
+        )
+
+        status = client.wait_for_custom_radio(
+            timeout_seconds=1,
+            poll_interval_seconds=0.001,
+            expected_stream_url=app_stream_url,
+        )
+
+        self.assertIsNotNone(status)
+        self.assertEqual(status.track_name, "First")
+        self.assertEqual(client.fetch_count, 2)
+
     def test_now_playing_confirmation_success(self) -> None:
         previous_status = parse_now_playing('<nowPlaying source="STANDBY"></nowPlaying>')
         client = FakeNowPlayingClient(
@@ -586,8 +675,7 @@ class PlaybackCleanupTests(unittest.TestCase):
             local_player = FakeLocalPlayer()
             app.state.local_player = local_player
             app.state.active_output = "bose"
-            app.state.bose_playback_state = BosePlaybackState(
-                state="playing",
+            app.state.bose_playback_state = app_owned_bose_state(
                 confirmed_start_timestamp=time.time() - 2,
                 duration_seconds=10.0,
             )
@@ -598,20 +686,140 @@ class PlaybackCleanupTests(unittest.TestCase):
             self.assertEqual(local_player.played_paths, ["first.mp3"])
 
 
+class BosePlaybackOwnershipTests(unittest.TestCase):
+    def test_app_started_custom_radio_is_recognized_as_owned(self) -> None:
+        with temp_music_app() as app:
+            _play_bose_track(app, QueueTrack(path="first.mp3", name="first.mp3"))
+
+            state = app.state.bose_playback_state
+            self.assertTrue(state.ownership_confirmed)
+            self.assertTrue(state.has_app_ownership_context)
+            self.assertEqual(state.state, "playing")
+            self.assertIn("playback_id=test-playback-id", app.state.bose_client.played_urls[0])
+
+    def test_old_thecakeisapi_style_physical_preset_is_external(self) -> None:
+        with temp_music_app() as app:
+            app.state.playback_queue.set_tracks(
+                [QueueTrack(path="first.mp3", name="first.mp3")],
+                "first.mp3",
+            )
+            app.state.active_output = "bose"
+            app.state.bose_playback_state = app_owned_bose_state()
+            old_preset_stream_url = build_library_stream_url(
+                TEST_PUBLIC_BASE_URL,
+                "first.mp3",
+            )
+            app.state.bose_now_playing_client = FakeNowPlayingClient(
+                [custom_radio_status(old_preset_stream_url, "Old preset")],
+            )
+
+            _poll_bose_playback_state(app, now_monotonic=10.0)
+
+            state = app.state.bose_playback_state
+            self.assertEqual(state.state, "stopped")
+            self.assertTrue(state.external_playback_active)
+            self.assertFalse(state.has_app_ownership_context)
+            self.assertEqual(
+                app.state.playback_message,
+                "Bose playback is active externally on LOCAL_INTERNET_RADIO",
+            )
+            self.assertIsNone(_playback_status(app)["now_playing"])
+            self.assertEqual(len(_playback_status(app)["queue"]), 1)
+
+    def test_normal_external_radio_preset_is_not_app_owned(self) -> None:
+        with temp_music_app() as app:
+            app.state.active_output = "bose"
+            app.state.bose_playback_state = app_owned_bose_state()
+            app.state.bose_now_playing_client = FakeNowPlayingClient(
+                [
+                    '<nowPlaying source="TUNEIN">'
+                    '<ContentItem source="TUNEIN" location="station:123" '
+                    'sourceAccount="account"><itemName>Radio</itemName></ContentItem>'
+                    "</nowPlaying>",
+                ],
+            )
+
+            _poll_bose_playback_state(app, now_monotonic=10.0)
+
+            self.assertTrue(app.state.bose_playback_state.external_playback_active)
+            self.assertFalse(app.state.bose_playback_state.has_app_ownership_context)
+            self.assertIn("TUNEIN", app.state.playback_message)
+
+    def test_aux_is_not_app_owned(self) -> None:
+        with temp_music_app() as app:
+            app.state.active_output = "bose"
+            app.state.bose_playback_state = app_owned_bose_state()
+            app.state.bose_now_playing_client = FakeNowPlayingClient(
+                ['<nowPlaying source="AUX"></nowPlaying>'],
+            )
+
+            _poll_bose_playback_state(app, now_monotonic=10.0)
+
+            self.assertTrue(app.state.bose_playback_state.external_playback_active)
+            self.assertFalse(app.state.bose_playback_state.has_app_ownership_context)
+            self.assertIn("AUX", app.state.playback_message)
+
+    def test_stop_only_sends_command_for_app_owned_playback(self) -> None:
+        with temp_music_app() as app:
+            app.state.bose_playback_state = BosePlaybackState(
+                state="stopped",
+                external_playback_active=True,
+            )
+
+            self.assertFalse(_stop_bose_playback(app))
+            self.assertFalse(app.state.bose_client.stopped)
+
+            app.state.bose_playback_state = app_owned_bose_state()
+            self.assertTrue(_stop_bose_playback(app))
+            self.assertTrue(app.state.bose_client.stopped)
+
+    def test_stop_rechecks_ownership_after_external_preset_takeover(self) -> None:
+        with temp_music_app() as app:
+            app.state.bose_playback_state = app_owned_bose_state()
+            old_preset_stream_url = build_library_stream_url(
+                TEST_PUBLIC_BASE_URL,
+                "first.mp3",
+            )
+            app.state.bose_now_playing_client = FakeNowPlayingClient(
+                [custom_radio_status(old_preset_stream_url, "Old preset")],
+            )
+
+            self.assertFalse(_stop_bose_playback(app))
+            self.assertFalse(app.state.bose_client.stopped)
+            self.assertTrue(app.state.bose_playback_state.external_playback_active)
+            self.assertFalse(app.state.bose_playback_state.has_app_ownership_context)
+
+    def test_external_takeover_clears_then_new_app_start_reestablishes_ownership(self) -> None:
+        with temp_music_app() as app:
+            app.state.active_output = "bose"
+            app.state.bose_playback_state = app_owned_bose_state()
+            app.state.bose_now_playing_client = FakeNowPlayingClient(
+                [custom_radio_status("https://radio.example/external", "External")],
+            )
+
+            _poll_bose_playback_state(app, now_monotonic=10.0)
+            self.assertFalse(app.state.bose_playback_state.has_app_ownership_context)
+
+            app.state.bose_now_playing_client = FakeOwnedNowPlayingClient(app)
+            _play_bose_track(app, QueueTrack(path="second.mp3", name="second.mp3"))
+
+            self.assertTrue(app.state.bose_playback_state.ownership_confirmed)
+            self.assertFalse(app.state.bose_playback_state.external_playback_active)
+            self.assertEqual(app.state.bose_playback_state.track_path, "second.mp3")
+
+
 class BoseStatePollingTests(unittest.TestCase):
     def test_poll_confirms_delayed_bose_start(self) -> None:
         with temp_music_app() as app:
             app.state.active_output = "bose"
-            app.state.bose_playback_state = BosePlaybackState(
+            app.state.bose_playback_state = app_owned_bose_state(
                 track_path="first.mp3",
                 track_name="first.mp3",
                 state="starting",
+                ownership_confirmed=False,
             )
             app.state.bose_now_playing_client = FakeNowPlayingClient(
-                [
-                    '<nowPlaying source="LOCAL_INTERNET_RADIO">'
-                    '<playStatus>PLAY_STATE</playStatus></nowPlaying>',
-                ],
+                [custom_radio_status(test_stream_url("first.mp3"), "first.mp3")],
             )
 
             _poll_bose_playback_state(app, now_monotonic=10.0)
@@ -628,17 +836,19 @@ class BoseStatePollingTests(unittest.TestCase):
     def test_external_bose_stop_clears_stale_playing_state(self) -> None:
         with temp_music_app() as app:
             app.state.active_output = "bose"
-            app.state.bose_playback_state = BosePlaybackState(
+            app.state.bose_playback_state = app_owned_bose_state(
                 track_path="first.mp3",
                 track_name="first.mp3",
-                state="playing",
                 confirmed_start_timestamp=time.time() - 3,
                 duration_seconds=30.0,
             )
             app.state.bose_now_playing_client = FakeNowPlayingClient(
                 [
-                    '<nowPlaying source="LOCAL_INTERNET_RADIO">'
-                    '<playStatus>STOP_STATE</playStatus></nowPlaying>',
+                    custom_radio_status(
+                        test_stream_url("first.mp3"),
+                        "first.mp3",
+                        play_status="STOP_STATE",
+                    ),
                 ],
             )
 
@@ -657,7 +867,7 @@ class BoseStatePollingTests(unittest.TestCase):
     def test_external_bose_standby_clears_stale_playing_state(self) -> None:
         with temp_music_app() as app:
             app.state.active_output = "bose"
-            app.state.bose_playback_state = BosePlaybackState(state="playing")
+            app.state.bose_playback_state = app_owned_bose_state()
             app.state.bose_now_playing_client = FakeNowPlayingClient(
                 ['<nowPlaying source="STANDBY"></nowPlaying>'],
             )
@@ -670,7 +880,7 @@ class BoseStatePollingTests(unittest.TestCase):
     def test_external_bose_source_change_clears_stale_playing_state(self) -> None:
         with temp_music_app() as app:
             app.state.active_output = "bose"
-            app.state.bose_playback_state = BosePlaybackState(state="playing")
+            app.state.bose_playback_state = app_owned_bose_state()
             app.state.bose_now_playing_client = FakeNowPlayingClient(
                 ['<nowPlaying source="AUX"></nowPlaying>'],
             )
@@ -684,18 +894,16 @@ class BoseStatePollingTests(unittest.TestCase):
         with temp_music_app() as app:
             app.state.active_output = "bose"
             app.state.playback_message = "Playing on Bose: first.mp3"
-            app.state.bose_playback_state = BosePlaybackState(
+            app.state.bose_playback_state = app_owned_bose_state(
                 track_path="first.mp3",
                 track_name="first.mp3",
-                state="playing",
                 confirmed_start_timestamp=time.time() - 3,
                 duration_seconds=30.0,
             )
             app.state.bose_now_playing_client = FakeNowPlayingClient(
                 [
                     '<nowPlaying source="INVALID_SOURCE"></nowPlaying>',
-                    '<nowPlaying source="LOCAL_INTERNET_RADIO">'
-                    '<playStatus>PLAY_STATE</playStatus></nowPlaying>',
+                    custom_radio_status(test_stream_url("first.mp3"), "first.mp3"),
                 ],
             )
 
@@ -713,14 +921,17 @@ class BoseStatePollingTests(unittest.TestCase):
     def test_bose_pause_is_not_mistaken_for_external_stop(self) -> None:
         with temp_music_app() as app:
             app.state.active_output = "bose"
-            app.state.bose_playback_state = BosePlaybackState(
+            app.state.bose_playback_state = app_owned_bose_state(
                 state="paused",
                 paused_elapsed_seconds=3.0,
             )
             app.state.bose_now_playing_client = FakeNowPlayingClient(
                 [
-                    '<nowPlaying source="LOCAL_INTERNET_RADIO">'
-                    '<playStatus>STOP_STATE</playStatus></nowPlaying>',
+                    custom_radio_status(
+                        test_stream_url("first.mp3"),
+                        "first.mp3",
+                        play_status="STOP_STATE",
+                    ),
                 ],
             )
 
@@ -739,15 +950,17 @@ class BoseStatePollingTests(unittest.TestCase):
                 "first.mp3",
             )
             app.state.active_output = "bose"
-            app.state.bose_playback_state = BosePlaybackState(
-                state="playing",
+            app.state.bose_playback_state = app_owned_bose_state(
                 confirmed_start_timestamp=time.time() - 3,
                 duration_seconds=1.0,
             )
             app.state.bose_now_playing_client = FakeNowPlayingClient(
                 [
-                    '<nowPlaying source="LOCAL_INTERNET_RADIO">'
-                    '<playStatus>STOP_STATE</playStatus></nowPlaying>',
+                    custom_radio_status(
+                        test_stream_url("first.mp3"),
+                        "first.mp3",
+                        play_status="STOP_STATE",
+                    ),
                 ],
             )
 
@@ -766,10 +979,9 @@ class BoseStatePollingTests(unittest.TestCase):
                 "first.mp3",
             )
             app.state.active_output = "bose"
-            app.state.bose_playback_state = BosePlaybackState(
+            app.state.bose_playback_state = app_owned_bose_state(
                 track_path="first.mp3",
                 track_name="first.mp3",
-                state="playing",
                 confirmed_start_timestamp=time.time() - 3,
                 duration_seconds=1.0,
             )
@@ -777,8 +989,7 @@ class BoseStatePollingTests(unittest.TestCase):
                 [
                     '<nowPlaying source="INVALID_SOURCE"></nowPlaying>',
                     '<nowPlaying source="INVALID_SOURCE"></nowPlaying>',
-                    '<nowPlaying source="LOCAL_INTERNET_RADIO">'
-                    '<track>Second</track></nowPlaying>',
+                    custom_radio_status(test_stream_url("second.mp3"), "Second"),
                 ],
             )
 
@@ -799,10 +1010,9 @@ class BoseStatePollingTests(unittest.TestCase):
                 "first.mp3",
             )
             app.state.active_output = "bose"
-            app.state.bose_playback_state = BosePlaybackState(
+            app.state.bose_playback_state = app_owned_bose_state(
                 track_path="first.mp3",
                 track_name="first.mp3",
-                state="playing",
                 confirmed_start_timestamp=time.time() - 3,
                 duration_seconds=1.0,
             )
@@ -810,8 +1020,7 @@ class BoseStatePollingTests(unittest.TestCase):
                 [
                     "<nowPlaying></nowPlaying>",
                     "<nowPlaying></nowPlaying>",
-                    '<nowPlaying source="LOCAL_INTERNET_RADIO">'
-                    '<track>Second</track></nowPlaying>',
+                    custom_radio_status(test_stream_url("second.mp3"), "Second"),
                 ],
             )
 
@@ -852,11 +1061,11 @@ class BoseStatePollingTests(unittest.TestCase):
         with temp_music_app() as app:
             app.state.active_output = "bose"
             app.state.playback_message = "Playing on Bose: first.mp3"
-            app.state.bose_playback_state = BosePlaybackState(state="playing")
+            app.state.bose_playback_state = app_owned_bose_state()
             app.state.bose_now_playing_client = FakeNowPlayingClient(
                 [
                     BosePlaybackError("temporary timeout"),
-                    '<nowPlaying source="LOCAL_INTERNET_RADIO"></nowPlaying>',
+                    custom_radio_status(test_stream_url("first.mp3"), "first.mp3"),
                 ],
             )
 
@@ -903,9 +1112,9 @@ class BoseStatePollingTests(unittest.TestCase):
     def test_bose_polling_is_rate_limited(self) -> None:
         with temp_music_app() as app:
             app.state.active_output = "bose"
-            app.state.bose_playback_state = BosePlaybackState(state="playing")
+            app.state.bose_playback_state = app_owned_bose_state()
             client = FakeNowPlayingClient(
-                ['<nowPlaying source="LOCAL_INTERNET_RADIO"></nowPlaying>'],
+                [custom_radio_status(test_stream_url("first.mp3"), "first.mp3")],
             )
             app.state.bose_now_playing_client = client
 
@@ -965,10 +1174,9 @@ class BoseAutoAdvanceTests(unittest.TestCase):
                 "first.mp3",
             )
             app.state.active_output = "bose"
-            app.state.bose_playback_state = BosePlaybackState(
+            app.state.bose_playback_state = app_owned_bose_state(
                 track_path="first.mp3",
                 track_name="first.mp3",
-                state="playing",
                 confirmed_start_timestamp=time.time() - 4,
                 duration_seconds=1.0,
             )
@@ -990,19 +1198,18 @@ class BoseAutoAdvanceTests(unittest.TestCase):
                 "first.mp3",
             )
             app.state.active_output = "bose"
-            app.state.bose_playback_state = BosePlaybackState(
+            app.state.bose_playback_state = app_owned_bose_state(
                 track_path="first.mp3",
                 track_name="first.mp3",
-                state="playing",
                 confirmed_start_timestamp=time.time() - 4,
                 duration_seconds=1.0,
             )
             app.state.bose_now_playing_client = FakeNowPlayingClient(
                 [
-                    '<nowPlaying source="LOCAL_INTERNET_RADIO"><track>First</track></nowPlaying>',
-                    '<nowPlaying source="LOCAL_INTERNET_RADIO"><track>First</track></nowPlaying>',
+                    custom_radio_status(test_stream_url("first.mp3"), "First"),
+                    custom_radio_status(test_stream_url("first.mp3"), "First"),
                     '<nowPlaying source="INVALID_SOURCE"></nowPlaying>',
-                    '<nowPlaying source="LOCAL_INTERNET_RADIO"><track>Second</track></nowPlaying>',
+                    custom_radio_status(test_stream_url("second.mp3"), "Second"),
                 ],
             )
 
@@ -1012,10 +1219,10 @@ class BoseAutoAdvanceTests(unittest.TestCase):
             app.state.bose_playback_state.confirmed_start_timestamp = time.time() - 4
             app.state.bose_now_playing_client = FakeNowPlayingClient(
                 [
-                    '<nowPlaying source="LOCAL_INTERNET_RADIO"><track>Second</track></nowPlaying>',
-                    '<nowPlaying source="LOCAL_INTERNET_RADIO"><track>Second</track></nowPlaying>',
+                    custom_radio_status(test_stream_url("second.mp3"), "Second"),
+                    custom_radio_status(test_stream_url("second.mp3"), "Second"),
                     '<nowPlaying source="INVALID_SOURCE"></nowPlaying>',
-                    '<nowPlaying source="LOCAL_INTERNET_RADIO"><track>Third</track></nowPlaying>',
+                    custom_radio_status(test_stream_url("third.mp3"), "Third"),
                 ],
             )
 
@@ -1034,10 +1241,9 @@ class BoseAutoAdvanceTests(unittest.TestCase):
                 "first.mp3",
             )
             app.state.active_output = "bose"
-            app.state.bose_playback_state = BosePlaybackState(
+            app.state.bose_playback_state = app_owned_bose_state(
                 track_path="first.mp3",
                 track_name="first.mp3",
-                state="playing",
                 confirmed_start_timestamp=time.time() - 30,
                 duration_seconds=3600.0,
             )
@@ -1076,10 +1282,9 @@ class BoseAutoAdvanceTests(unittest.TestCase):
             )
             app.state.active_output = "bose"
             app.state.repeat_track = True
-            app.state.bose_playback_state = BosePlaybackState(
+            app.state.bose_playback_state = app_owned_bose_state(
                 track_path="first.mp3",
                 track_name="first.mp3",
-                state="playing",
                 confirmed_start_timestamp=time.time() - 4,
                 duration_seconds=1.0,
             )
@@ -1096,8 +1301,7 @@ class BoseAutoAdvanceTests(unittest.TestCase):
                 "first.mp3",
             )
             app.state.active_output = "bose"
-            app.state.bose_playback_state = BosePlaybackState(
-                state="playing",
+            app.state.bose_playback_state = app_owned_bose_state(
                 confirmed_start_timestamp=time.time() - 4,
                 duration_seconds=1.0,
             )
@@ -1114,8 +1318,7 @@ class BoseAutoAdvanceTests(unittest.TestCase):
 
     def test_bose_pause_and_resume_update_timer_state(self) -> None:
         with temp_music_app() as app:
-            app.state.bose_playback_state = BosePlaybackState(
-                state="playing",
+            app.state.bose_playback_state = app_owned_bose_state(
                 confirmed_start_timestamp=time.time() - 3,
                 duration_seconds=10.0,
             )
@@ -1142,7 +1345,7 @@ class BoseAutoAdvanceTests(unittest.TestCase):
                 "first.mp3",
             )
             app.state.active_output = "bose"
-            app.state.bose_playback_state = BosePlaybackState(
+            app.state.bose_playback_state = app_owned_bose_state(
                 track_path="first.mp3",
                 track_name="first.mp3",
                 state="paused",
@@ -1169,15 +1372,15 @@ class BoseAutoAdvanceTests(unittest.TestCase):
                 "first.mp3",
             )
             app.state.active_output = "bose"
-            app.state.bose_playback_state = BosePlaybackState(
-                state="playing",
+            app.state.bose_playback_state = app_owned_bose_state(
                 confirmed_start_timestamp=time.time() - 4,
                 duration_seconds=1.0,
             )
             app.state.bose_now_playing_client = FakeNowPlayingClient(
                 [
+                    custom_radio_status(test_stream_url("first.mp3"), "first.mp3"),
                     '<nowPlaying source="STANDBY"></nowPlaying>',
-                    '<nowPlaying source="CUSTOM_RADIO"></nowPlaying>',
+                    custom_radio_status(test_stream_url("first.mp3"), "first.mp3"),
                 ],
             )
 
@@ -1208,12 +1411,14 @@ class FakeNowPlayingClient(BoseNowPlayingClient):
 class FakeBoseClient:
     def __init__(self) -> None:
         self.played_names: list[str] = []
+        self.played_urls: list[str] = []
         self.stopped = False
         self.paused = False
         self.resumed = False
 
     def play_stream(self, name: str, stream_url: str) -> BosePlaybackRequest:
         self.played_names.append(name)
+        self.played_urls.append(stream_url)
         return BosePlaybackRequest(stream_url=stream_url, command=["fake"])
 
     def stop(self) -> None:
@@ -1250,6 +1455,24 @@ class FakeLocalPlayer:
         }
 
 
+class FakeOwnedNowPlayingClient(BoseNowPlayingClient):
+    def __init__(self, app) -> None:
+        self.app = app
+        self.fetch_count = 0
+
+    def fetch_status(self) -> BoseNowPlayingStatus:
+        self.fetch_count += 1
+        stream_url = self.app.state.bose_playback_state.ownership_stream_url
+        if stream_url is None:
+            return parse_now_playing('<nowPlaying source="STANDBY"></nowPlaying>')
+        return parse_now_playing(
+            custom_radio_status(
+                stream_url,
+                self.app.state.bose_playback_state.track_name or "Test track",
+            ),
+        )
+
+
 class temp_music_app:
     def __enter__(self):
         self.temp_dir = tempfile.TemporaryDirectory()
@@ -1270,9 +1493,8 @@ class temp_music_app:
         )
         self.app.state.playback_monitor_stop.set()
         self.app.state.bose_client = FakeBoseClient()
-        self.app.state.bose_now_playing_client = FakeNowPlayingClient(
-            ['<nowPlaying source="CUSTOM_RADIO"></nowPlaying>'],
-        )
+        self.app.state.bose_playback_id_factory = lambda: TEST_PLAYBACK_ID
+        self.app.state.bose_now_playing_client = FakeOwnedNowPlayingClient(self.app)
         return self.app
 
     def __exit__(self, *args):

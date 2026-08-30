@@ -1,10 +1,11 @@
 import base64
+import binascii
 import subprocess
 import time
 from dataclasses import dataclass
 from xml.etree import ElementTree
 from urllib.error import URLError
-from urllib.parse import urlencode, urljoin
+from urllib.parse import unquote, urlencode, urljoin
 from urllib.request import Request, urlopen
 
 
@@ -25,6 +26,22 @@ class BoseNowPlayingStatus:
     play_status: str | None
     track_name: str | None
     raw_text: str
+    content_location: str | None = None
+    source_account: str | None = None
+    content_type: str | None = None
+    station_location: str | None = None
+    artist: str | None = None
+    album: str | None = None
+
+    def matches_stream_url(self, expected_stream_url: str) -> bool:
+        for location in (self.content_location, self.station_location):
+            if not location:
+                continue
+            if location == expected_stream_url:
+                return True
+            if decode_custom_playback_stream_url(location) == expected_stream_url:
+                return True
+        return False
 
     @property
     def appears_to_be_custom_radio(self) -> bool:
@@ -89,6 +106,18 @@ class BosePlaybackState:
     last_status_poll_monotonic: float | None = None
     last_confirmed_status_timestamp: float | None = None
     status_poll_failures: int = 0
+    ownership_stream_url: str | None = None
+    ownership_confirmed: bool = False
+    external_playback_active: bool = False
+
+    @property
+    def has_app_ownership_context(self) -> bool:
+        return self.ownership_stream_url is not None
+
+    def confirm_ownership(self) -> None:
+        if self.ownership_stream_url is not None:
+            self.ownership_confirmed = True
+            self.external_playback_active = False
 
     def elapsed_seconds(self, now: float | None = None) -> float | None:
         if self.state == "paused":
@@ -117,6 +146,9 @@ class BosePlaybackState:
         self.warning = None
         self.last_status_poll_monotonic = None
         self.status_poll_failures = 0
+        self.ownership_stream_url = None
+        self.ownership_confirmed = False
+        self.external_playback_active = False
 
     def status_poll_due(
         self,
@@ -148,6 +180,13 @@ class BosePlaybackState:
         self.confirmed_start_timestamp = None
         self.paused_elapsed_seconds = None
         self.warning = reason
+        self.ownership_stream_url = None
+        self.ownership_confirmed = False
+        self.external_playback_active = False
+
+    def externally_active(self, reason: str) -> None:
+        self.externally_stopped(reason)
+        self.external_playback_active = True
 
     def pause(self, now: float | None = None) -> None:
         if self.state != "playing":
@@ -180,10 +219,14 @@ class BosePlaybackState:
 
     def ended(self) -> None:
         self.state = "ended"
+        self.ownership_stream_url = None
+        self.ownership_confirmed = False
 
     def error(self, message: str) -> None:
         self.state = "error"
         self.warning = message
+        self.ownership_stream_url = None
+        self.ownership_confirmed = False
 
 
 class AfterTouchClient:
@@ -345,6 +388,7 @@ class BoseNowPlayingClient:
         timeout_seconds: float,
         poll_interval_seconds: float,
         previous_status: BoseNowPlayingStatus | None = None,
+        expected_stream_url: str | None = None,
     ) -> BoseNowPlayingStatus | None:
         deadline = time.monotonic() + timeout_seconds
         previous_raw_text = previous_status.raw_text if previous_status else None
@@ -358,6 +402,17 @@ class BoseNowPlayingClient:
 
         while True:
             status = self.fetch_status()
+            if expected_stream_url is not None:
+                if (
+                    status.appears_to_be_custom_radio
+                    and status.matches_stream_url(expected_stream_url)
+                ):
+                    return status
+                if time.monotonic() >= deadline:
+                    return None
+                time.sleep(poll_interval_seconds)
+                continue
+
             source_changed = (
                 previous_raw_text is not None
                 and status.raw_text != previous_raw_text
@@ -398,11 +453,10 @@ def parse_now_playing(raw_text: str) -> BoseNowPlayingStatus:
             raw_text=raw_text,
         )
 
+    content_item = root.find(".//ContentItem")
     source = root.attrib.get("source")
-    if not source:
-        content_item = root.find(".//ContentItem")
-        if content_item is not None:
-            source = content_item.attrib.get("source")
+    if not source and content_item is not None:
+        source = content_item.attrib.get("source")
 
     play_status = root.attrib.get("playStatus") or root.findtext(".//playStatus")
     track_name = root.findtext(".//track") or root.findtext(".//itemName")
@@ -411,9 +465,45 @@ def parse_now_playing(raw_text: str) -> BoseNowPlayingStatus:
         play_status=play_status,
         track_name=track_name,
         raw_text=raw_text,
+        content_location=(
+            content_item.attrib.get("location") if content_item is not None else None
+        ),
+        source_account=(
+            content_item.attrib.get("sourceAccount")
+            if content_item is not None
+            else None
+        ),
+        content_type=(
+            content_item.attrib.get("type") if content_item is not None else None
+        ),
+        station_location=root.findtext(".//stationLocation"),
+        artist=root.findtext(".//artist"),
+        album=root.findtext(".//album"),
     )
 
 
-def build_library_stream_url(public_base_url: str, library_path: str) -> str:
-    query = urlencode({"path": library_path})
+def decode_custom_playback_stream_url(location: str) -> str | None:
+    playback_path = "/custom/v1/playback/"
+    if playback_path not in location:
+        return None
+
+    encoded_stream_url = location.split(playback_path, 1)[1].split("?", 1)[0]
+    try:
+        return base64.b64decode(
+            unquote(encoded_stream_url),
+            validate=True,
+        ).decode("utf-8")
+    except (binascii.Error, ValueError, UnicodeDecodeError):
+        return None
+
+
+def build_library_stream_url(
+    public_base_url: str,
+    library_path: str,
+    playback_id: str | None = None,
+) -> str:
+    query_parameters = {"path": library_path}
+    if playback_id:
+        query_parameters["playback_id"] = playback_id
+    query = urlencode(query_parameters)
     return urljoin(public_base_url.rstrip("/") + "/", f"api/library/file?{query}")
