@@ -4,14 +4,24 @@
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <title>thecakeisapi</title>
-    <link rel="stylesheet" href="/static/styles.css?v=__THECAKEISAPI_VERSION__">
-    <script src="/static/app.js?v=__THECAKEISAPI_VERSION__&state=external-bose" defer></script>
+    <link rel="stylesheet" href="/static/styles.css?v=__THECAKEISAPI_VERSION__&state=bose-presets">
+    <script src="/static/app.js?v=__THECAKEISAPI_VERSION__&state=bose-presets" defer></script>
   </head>
   <body>
     <main class="shell">
       <header class="topbar">
         <h1>TheCakeIsAPI</h1>
         <div class="topbar-meta">
+          <button id="bose-presets-button" class="bose-presets-open-button" type="button" aria-label="Bose Presets" title="Bose Presets">
+            <svg class="topbar-button-icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+              <circle cx="7" cy="7" r="1.5"></circle>
+              <circle cx="12" cy="7" r="1.5"></circle>
+              <circle cx="17" cy="7" r="1.5"></circle>
+              <circle cx="7" cy="17" r="1.5"></circle>
+              <circle cx="12" cy="17" r="1.5"></circle>
+              <circle cx="17" cy="17" r="1.5"></circle>
+            </svg>
+          </button>
           <button id="settings-button" class="settings-open-button" type="button" aria-label="Open settings" title="Settings">&#9881;</button>
           <span id="health" class="status">Starting</span>
           <span id="app-version" class="version-note" aria-label="Application version">v__THECAKEISAPI_VERSION__</span>
@@ -109,6 +119,61 @@
         </section>
       </footer>
     </main>
+
+    <dialog id="bose-presets-dialog" class="bose-presets-dialog" aria-labelledby="bose-presets-heading">
+      <header class="bose-presets-dialog-header">
+        <h2 id="bose-presets-heading">Bose Presets</h2>
+        <button id="bose-presets-close-button" class="bose-presets-close-button" type="button" aria-label="Close Bose Presets" title="Close">&times;</button>
+      </header>
+
+      <div class="bose-presets-dialog-body">
+        <p id="bose-presets-message" class="message bose-presets-message" aria-live="polite">Loading presets...</p>
+
+        <div class="bose-remote-layout" aria-label="Bose speaker controls">
+          <div class="bose-future-controls bose-future-controls-left">
+            <button class="bose-future-control" type="button" disabled aria-label="Power unavailable" title="Power unavailable">
+              <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+                <path d="M12 3v8"></path>
+                <path d="M7.1 5.8a8 8 0 1 0 9.8 0"></path>
+              </svg>
+            </button>
+            <button class="bose-future-control bose-source-control" type="button" disabled aria-label="Bluetooth and AUX unavailable" title="Bluetooth and AUX unavailable">
+              <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+                <path d="m8 7 8 10V7L8 17l8-10"></path>
+              </svg>
+              <span>AUX</span>
+            </button>
+          </div>
+
+          <div class="bose-preset-grid" aria-label="Physical presets">
+            <button class="bose-preset-button" type="button" data-preset-id="1" disabled><span class="bose-preset-number">1</span><span class="bose-preset-name">Loading</span></button>
+            <button class="bose-preset-button" type="button" data-preset-id="2" disabled><span class="bose-preset-number">2</span><span class="bose-preset-name">Loading</span></button>
+            <button class="bose-preset-button" type="button" data-preset-id="3" disabled><span class="bose-preset-number">3</span><span class="bose-preset-name">Loading</span></button>
+            <button class="bose-preset-button" type="button" data-preset-id="4" disabled><span class="bose-preset-number">4</span><span class="bose-preset-name">Loading</span></button>
+            <button class="bose-preset-button" type="button" data-preset-id="5" disabled><span class="bose-preset-number">5</span><span class="bose-preset-name">Loading</span></button>
+            <button class="bose-preset-button" type="button" data-preset-id="6" disabled><span class="bose-preset-number">6</span><span class="bose-preset-name">Loading</span></button>
+          </div>
+
+          <div class="bose-future-controls bose-future-controls-right">
+            <button class="bose-future-control" type="button" disabled aria-label="Volume up unavailable" title="Volume up unavailable">
+              <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+                <path d="M12 5v14M5 12h14"></path>
+              </svg>
+            </button>
+            <button class="bose-future-control" type="button" disabled aria-label="Volume down unavailable" title="Volume down unavailable">
+              <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+                <path d="M5 12h14"></path>
+              </svg>
+            </button>
+          </div>
+        </div>
+
+        <div class="bose-current-item">
+          <span>Current Bose item</span>
+          <strong id="bose-current-item-title">No current Bose item</strong>
+        </div>
+      </div>
+    </dialog>
 
     <dialog id="settings-dialog" class="settings-dialog" aria-labelledby="settings-heading">
       <header class="settings-dialog-header">

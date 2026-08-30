@@ -20,6 +20,12 @@ const playButton = document.querySelector("#play-button");
 const stopButton = document.querySelector("#stop-button");
 const nextButton = document.querySelector("#next-button");
 const repeatButton = document.querySelector("#repeat-button");
+const bosePresetsButton = document.querySelector("#bose-presets-button");
+const bosePresetsDialog = document.querySelector("#bose-presets-dialog");
+const bosePresetsCloseButton = document.querySelector("#bose-presets-close-button");
+const bosePresetsMessage = document.querySelector("#bose-presets-message");
+const bosePresetButtons = [...document.querySelectorAll(".bose-preset-button")];
+const boseCurrentItemTitle = document.querySelector("#bose-current-item-title");
 const settingsButton = document.querySelector("#settings-button");
 const settingsDialog = document.querySelector("#settings-dialog");
 const settingsCloseButton = document.querySelector("#settings-close-button");
@@ -33,6 +39,7 @@ const componentStatusValues = [...document.querySelectorAll("[data-component-id]
 let currentDirectoryFiles = [];
 let lastPlaybackState = null;
 let outputSelectionInitialized = false;
+let presetActivationInProgress = false;
 
 const PLAY_ENDPOINTS = Object.freeze({
   bose: "/api/player/bose/play",
@@ -373,6 +380,8 @@ function renderPlaybackState(playbackState) {
   renderQueue(playbackState.queue || []);
   renderActiveOutput(playbackState);
   updateTransportButtons(playbackState);
+  updateBosePresetsLauncher();
+  boseCurrentItemTitle.textContent = currentBoseItemTitle(playbackState);
 }
 
 function renderActiveOutput(playbackState) {
@@ -521,6 +530,20 @@ function isExternalBosePlayback(playbackState) {
   );
 }
 
+function updateBosePresetsLauncher() {
+  bosePresetsButton.hidden = selectedOutput() !== "bose";
+}
+
+function currentBoseItemTitle(playbackState = lastPlaybackState) {
+  if (playbackState?.bose?.external_playback_active) {
+    return playbackState.bose.external_display_name || "External Bose playback";
+  }
+  if (playbackState?.active_output === "bose" && playbackState.now_playing?.name) {
+    return playbackState.now_playing.name;
+  }
+  return "No current Bose item";
+}
+
 function selectOutput(output) {
   const option = outputOptions.find((candidate) => candidate.value === output);
   if (option) {
@@ -589,6 +612,139 @@ function formatTime(seconds) {
   const minutes = Math.floor(safeSeconds / 60);
   const remainingSeconds = safeSeconds % 60;
   return `${minutes}:${remainingSeconds.toString().padStart(2, "0")}`;
+}
+
+function openBosePresets() {
+  if (selectedOutput() !== "bose") {
+    return;
+  }
+
+  boseCurrentItemTitle.textContent = currentBoseItemTitle();
+  bosePresetsDialog.showModal();
+  bosePresetsCloseButton.focus();
+  loadBosePresets();
+}
+
+async function loadBosePresets() {
+  bosePresetsMessage.textContent = "Loading presets...";
+  bosePresetsMessage.dataset.state = "";
+  resetBosePresetButtons("Loading");
+
+  try {
+    const response = await fetch("/api/player/bose/presets");
+    const data = await response.json();
+    if (!response.ok) {
+      throw new Error(apiErrorMessage(data, "Preset request failed"));
+    }
+
+    renderBosePresets(data.presets || []);
+    const availableCount = (data.presets || []).filter((preset) => preset.available).length;
+    bosePresetsMessage.textContent = availableCount
+      ? `${availableCount} physical presets available`
+      : "No physical presets are assigned";
+  } catch (error) {
+    resetBosePresetButtons("Unavailable");
+    bosePresetsMessage.textContent = `Could not load presets: ${error.message}`;
+    bosePresetsMessage.dataset.state = "error";
+  }
+}
+
+function renderBosePresets(presets) {
+  const presetsById = new Map(presets.map((preset) => [Number(preset.id), preset]));
+  const currentTitle = currentBoseItemTitle().trim().toLocaleLowerCase();
+
+  for (const button of bosePresetButtons) {
+    const presetId = Number(button.dataset.presetId);
+    const preset = presetsById.get(presetId);
+    const available = Boolean(preset?.available);
+    const displayName = available
+      ? preset.display_name || preset.source || `Preset ${presetId}`
+      : "Not assigned";
+    const active = Boolean(
+      available &&
+        lastPlaybackState?.bose?.external_playback_active &&
+        displayName.trim().toLocaleLowerCase() === currentTitle,
+    );
+
+    button.querySelector(".bose-preset-name").textContent = displayName;
+    button.disabled = !available;
+    button.dataset.available = available ? "true" : "false";
+    button.dataset.active = active ? "true" : "false";
+    button.setAttribute(
+      "aria-label",
+      available ? `Preset ${presetId}: ${displayName}` : `Preset ${presetId}: not assigned`,
+    );
+    button.title = available ? displayName : "Preset not assigned";
+  }
+}
+
+function resetBosePresetButtons(label) {
+  for (const button of bosePresetButtons) {
+    button.querySelector(".bose-preset-name").textContent = label;
+    button.disabled = true;
+    button.dataset.available = "false";
+    button.dataset.active = "false";
+  }
+}
+
+async function activateBosePreset(button) {
+  if (presetActivationInProgress || button.dataset.available !== "true") {
+    return;
+  }
+
+  const presetId = Number(button.dataset.presetId);
+  presetActivationInProgress = true;
+  setBosePresetButtonsBusy(true);
+  bosePresetsMessage.textContent = `Selecting preset ${presetId}...`;
+  bosePresetsMessage.dataset.state = "";
+
+  try {
+    const response = await fetch(`/api/player/bose/presets/${presetId}/activate`, {
+      method: "POST",
+    });
+    const data = await response.json();
+    if (!response.ok) {
+      throw new Error(apiErrorMessage(data, "Preset activation failed"));
+    }
+
+    lastPlaybackState = data;
+    syncOutputSelector(data);
+    renderPlaybackState(data);
+    bosePresetsDialog.close();
+    refreshPlaybackStatus();
+  } catch (error) {
+    bosePresetsMessage.textContent = `Could not select preset ${presetId}: ${error.message}`;
+    bosePresetsMessage.dataset.state = "error";
+  } finally {
+    presetActivationInProgress = false;
+    setBosePresetButtonsBusy(false);
+  }
+}
+
+function setBosePresetButtonsBusy(busy) {
+  for (const button of bosePresetButtons) {
+    button.disabled = busy || button.dataset.available !== "true";
+  }
+}
+
+function closeBosePresetsFromBackdrop(event) {
+  if (event.target !== bosePresetsDialog) {
+    return;
+  }
+
+  const bounds = bosePresetsDialog.getBoundingClientRect();
+  const insideDialog =
+    event.clientX >= bounds.left &&
+    event.clientX <= bounds.right &&
+    event.clientY >= bounds.top &&
+    event.clientY <= bounds.bottom;
+  if (insideDialog) {
+    return;
+  }
+
+  event.preventDefault();
+  event.stopPropagation();
+  bosePresetsDialog.close();
 }
 
 function openSettings() {
@@ -829,9 +985,16 @@ trackProgress.addEventListener("change", () => {
 
 outputSelector.addEventListener("change", () => {
   outputSelectionInitialized = true;
+  updateBosePresetsLauncher();
   refreshPlaybackStatus();
 });
 
+bosePresetsButton.addEventListener("click", openBosePresets);
+bosePresetsCloseButton.addEventListener("click", () => bosePresetsDialog.close());
+bosePresetsDialog.addEventListener("click", closeBosePresetsFromBackdrop);
+for (const button of bosePresetButtons) {
+  button.addEventListener("click", () => activateBosePreset(button));
+}
 settingsButton.addEventListener("click", openSettings);
 settingsCloseButton.addEventListener("click", () => settingsDialog.close());
 settingsForm.addEventListener("submit", saveSettings);
@@ -841,6 +1004,7 @@ window.addEventListener("hashchange", () => {
   loadDirectory(currentPath());
 });
 
+updateBosePresetsLauncher();
 loadApp();
 setInterval(() => {
   if (lastPlaybackState !== null) {

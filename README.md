@@ -115,7 +115,7 @@ While Bose is the active output, TheCakeIsAPI checks the existing Bose `/now_pla
 
 When Bose is selected in the browser, the same rate-limited status check also displays externally started presets and radio using the best available track, station, item, or source name. External playback remains separate from the app queue and its transport controls stay disabled until TheCakeIsAPI starts a track and establishes ownership.
 
-The backend reads the speaker's six physical preset slots on demand through `GET /api/player/bose/presets`. `POST /api/player/bose/presets/<id>/activate` selects slots 1-6 through the Bose `/key` API, clears the temporary app queue and playback ownership, and leaves the selected preset classified as external playback. The preset launcher UI remains planned separately.
+The backend reads the speaker's six physical preset slots on demand through `GET /api/player/bose/presets`. `POST /api/player/bose/presets/<id>/activate` selects slots 1-6 through the Bose `/key` API, clears the temporary app queue and playback ownership, and leaves the selected preset classified as external playback. When Bose output is selected, the header Bose Presets launcher loads these slots on demand in a compact physical-style popup. Power, AUX/Bluetooth, and volume controls are visible disabled placeholders for future work.
 
 ## Storage
 

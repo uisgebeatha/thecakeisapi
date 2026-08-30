@@ -85,7 +85,7 @@ class WebUiTransportTests(unittest.TestCase):
         self.assertEqual(app_js.count("fetch(playbackStatusUrl())"), 2)
         self.assertIn("refreshPlaybackStatus();", app_js)
         self.assertIn(
-            "/static/app.js?v=__THECAKEISAPI_VERSION__&state=external-bose",
+            "/static/app.js?v=__THECAKEISAPI_VERSION__&state=bose-presets",
             index_html,
         )
 
@@ -502,6 +502,113 @@ class WebUiTransportTests(unittest.TestCase):
             r"@media \(max-width: 760px\)[\s\S]*?\.settings-restart-panel\s*\{"
             r"[^}]*flex-direction: column;",
         )
+
+
+class WebUiBosePresetTests(unittest.TestCase):
+    def test_bose_only_launcher_is_next_to_settings_with_accessible_svg(self) -> None:
+        index_html = INDEX_HTML.read_text(encoding="utf-8")
+        app_js = APP_JS.read_text(encoding="utf-8")
+
+        launcher_position = index_html.index('id="bose-presets-button"')
+        settings_position = index_html.index('id="settings-button"')
+        self.assertLess(launcher_position, settings_position)
+        self.assertIn('aria-label="Bose Presets"', index_html)
+        self.assertIn('<svg class="topbar-button-icon"', index_html)
+        self.assertIn(
+            "/static/styles.css?v=__THECAKEISAPI_VERSION__&state=bose-presets",
+            index_html,
+        )
+        self.assertIn(
+            'bosePresetsButton.hidden = selectedOutput() !== "bose";',
+            app_js,
+        )
+        self.assertIn("updateBosePresetsLauncher();", app_js)
+
+    def test_dialog_uses_six_presets_and_four_disabled_future_controls(self) -> None:
+        index_html = INDEX_HTML.read_text(encoding="utf-8")
+        dialog_html = index_html.split(
+            '<dialog id="bose-presets-dialog"',
+            1,
+        )[1].split("</dialog>", 1)[0]
+
+        self.assertEqual(dialog_html.count('class="bose-preset-button"'), 6)
+        for preset_id in range(1, 7):
+            self.assertIn(f'data-preset-id="{preset_id}" disabled', dialog_html)
+        self.assertEqual(dialog_html.count('<button class="bose-future-control'), 4)
+        self.assertIn('aria-label="Power unavailable"', dialog_html)
+        self.assertIn('aria-label="Bluetooth and AUX unavailable"', dialog_html)
+        self.assertIn('aria-label="Volume up unavailable"', dialog_html)
+        self.assertIn('aria-label="Volume down unavailable"', dialog_html)
+
+    def test_presets_are_loaded_only_when_the_dialog_opens(self) -> None:
+        app_js = APP_JS.read_text(encoding="utf-8")
+
+        self.assertEqual(app_js.count('fetch("/api/player/bose/presets")'), 1)
+        self.assertIn("bosePresetsDialog.showModal();", app_js)
+        self.assertIn("loadBosePresets();", app_js)
+        self.assertIn("renderBosePresets(data.presets || []);", app_js)
+        self.assertIn('button.disabled = !available;', app_js)
+        self.assertIn('resetBosePresetButtons("Unavailable");', app_js)
+
+    def test_preset_activation_posts_then_closes_and_refreshes_status(self) -> None:
+        app_js = APP_JS.read_text(encoding="utf-8")
+
+        self.assertIn(
+            'fetch(`/api/player/bose/presets/${presetId}/activate`, {',
+            app_js,
+        )
+        self.assertIn('method: "POST"', app_js)
+        self.assertIn("renderPlaybackState(data);", app_js)
+        self.assertIn("bosePresetsDialog.close();", app_js)
+        self.assertIn("refreshPlaybackStatus();", app_js)
+
+    def test_popup_reuses_external_metadata_for_current_item(self) -> None:
+        index_html = INDEX_HTML.read_text(encoding="utf-8")
+        app_js = APP_JS.read_text(encoding="utf-8")
+
+        self.assertIn('id="bose-current-item-title"', index_html)
+        self.assertIn("playbackState?.bose?.external_playback_active", app_js)
+        self.assertIn(
+            'return playbackState.bose.external_display_name || "External Bose playback";',
+            app_js,
+        )
+        self.assertIn(
+            "boseCurrentItemTitle.textContent = currentBoseItemTitle(playbackState);",
+            app_js,
+        )
+
+    def test_backdrop_click_is_consumed_before_dialog_closes(self) -> None:
+        app_js = APP_JS.read_text(encoding="utf-8")
+        handler = app_js.split(
+            "function closeBosePresetsFromBackdrop(event)",
+            1,
+        )[1].split("function openSettings()", 1)[0]
+
+        self.assertIn("event.target !== bosePresetsDialog", handler)
+        self.assertIn("event.preventDefault();", handler)
+        self.assertIn("event.stopPropagation();", handler)
+        self.assertLess(handler.index("event.stopPropagation();"), handler.index(".close();"))
+
+    def test_popup_keeps_remote_layout_and_truncation_on_narrow_screens(self) -> None:
+        styles_css = STYLES_CSS.read_text(encoding="utf-8")
+        mobile_rules = styles_css.split("@media (max-width: 760px)", 1)[1]
+        mobile_rules = mobile_rules.split("@media (max-width: 420px)", 1)[0]
+
+        self.assertRegex(
+            styles_css,
+            r"\.bose-remote-layout\s*\{[^}]*"
+            r"grid-template-columns: 2\.8rem minmax\(0, 1fr\) 2\.8rem;",
+        )
+        self.assertRegex(
+            styles_css,
+            r"\.bose-preset-grid\s*\{[^}]*"
+            r"grid-template-columns: repeat\(3, minmax\(0, 1fr\)\);[^}]*"
+            r"grid-template-rows: repeat\(2, minmax\(4\.2rem, auto\)\);",
+        )
+        self.assertIn("width: calc(100% - 0.5rem);", mobile_rules)
+        self.assertIn("grid-template-columns: 2.75rem minmax(0, 1fr) 2.75rem;", mobile_rules)
+        self.assertIn("overflow-wrap: anywhere;", styles_css)
+        self.assertIn("-webkit-line-clamp: 2;", styles_css)
 
 
 if __name__ == "__main__":
