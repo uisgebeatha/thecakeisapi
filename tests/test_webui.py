@@ -85,7 +85,7 @@ class WebUiTransportTests(unittest.TestCase):
         self.assertEqual(app_js.count("fetch(playbackStatusUrl())"), 2)
         self.assertIn("refreshPlaybackStatus();", app_js)
         self.assertIn(
-            "/static/app.js?v=__THECAKEISAPI_VERSION__&state=bose-controls",
+            "/static/app.js?v=__THECAKEISAPI_VERSION__&state=stable-volume-popup",
             index_html,
         )
 
@@ -575,6 +575,13 @@ class WebUiBosePresetTests(unittest.TestCase):
             1,
         )[1].split("function closeBosePresetsFromBackdrop", 1)[0]
         self.assertNotIn("bosePresetsDialog.close();", control_handler)
+        self.assertNotIn("Adjusting Bose volume", control_handler)
+        self.assertIn('if (action === "power") {', control_handler)
+        self.assertIn('bosePresetsMessage.textContent = "Sending Bose power command...";', control_handler)
+        self.assertIn(
+            'bosePresetsMessage.textContent = "Power command sent; waiting for Bose status...";',
+            control_handler,
+        )
 
     def test_power_requires_confirmation_before_sending_action(self) -> None:
         app_js = APP_JS.read_text(encoding="utf-8")

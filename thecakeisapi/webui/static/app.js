@@ -751,9 +751,10 @@ async function sendBoseControlAction(action) {
 
   boseControlInProgress = true;
   setBoseControlButtonsBusy(true);
-  bosePresetsMessage.textContent =
-    action === "power" ? "Sending Bose power command..." : "Adjusting Bose volume...";
-  bosePresetsMessage.dataset.state = "";
+  if (action === "power") {
+    bosePresetsMessage.textContent = "Sending Bose power command...";
+    bosePresetsMessage.dataset.state = "";
+  }
 
   try {
     const response = await fetch(`/api/player/bose/control/${action}`, {
@@ -766,9 +767,8 @@ async function sendBoseControlAction(action) {
 
     lastPlaybackState = data;
     renderPlaybackState(data);
-    bosePresetsMessage.textContent =
-      action === "power" ? "Power command sent; waiting for Bose status..." : "";
     if (action === "power") {
+      bosePresetsMessage.textContent = "Power command sent; waiting for Bose status...";
       refreshPlaybackStatus();
     }
   } catch (error) {
