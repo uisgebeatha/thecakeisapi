@@ -85,7 +85,7 @@ class WebUiTransportTests(unittest.TestCase):
         self.assertEqual(app_js.count("fetch(playbackStatusUrl())"), 2)
         self.assertIn("refreshPlaybackStatus();", app_js)
         self.assertIn(
-            "/static/app.js?v=__THECAKEISAPI_VERSION__&state=bose-panel-layout",
+            "/static/app.js?v=__THECAKEISAPI_VERSION__&state=bose-controls",
             index_html,
         )
 
@@ -515,7 +515,7 @@ class WebUiBosePresetTests(unittest.TestCase):
         self.assertIn('aria-label="Bose Presets"', index_html)
         self.assertIn('<svg class="topbar-button-icon"', index_html)
         self.assertIn(
-            "/static/styles.css?v=__THECAKEISAPI_VERSION__&state=bose-panel-geometry",
+            "/static/styles.css?v=__THECAKEISAPI_VERSION__&state=bose-controls",
             index_html,
         )
         self.assertIn(
@@ -524,7 +524,7 @@ class WebUiBosePresetTests(unittest.TestCase):
         )
         self.assertIn("updateBosePresetsLauncher();", app_js)
 
-    def test_dialog_uses_six_presets_and_four_disabled_future_controls(self) -> None:
+    def test_dialog_enables_power_and_volume_but_keeps_aux_disabled(self) -> None:
         index_html = INDEX_HTML.read_text(encoding="utf-8")
         dialog_html = index_html.split(
             '<dialog id="bose-presets-dialog"',
@@ -534,11 +534,65 @@ class WebUiBosePresetTests(unittest.TestCase):
         self.assertEqual(dialog_html.count('class="bose-preset-button"'), 6)
         for preset_id in range(1, 7):
             self.assertIn(f'data-preset-id="{preset_id}" disabled', dialog_html)
-        self.assertEqual(dialog_html.count('<button class="bose-future-control'), 4)
-        self.assertIn('aria-label="Power unavailable"', dialog_html)
+        self.assertEqual(dialog_html.count('class="bose-future-control"'), 3)
+        self.assertIn('id="bose-power-button"', dialog_html)
+        self.assertIn('id="bose-volume-up-button"', dialog_html)
+        self.assertIn('id="bose-volume-down-button"', dialog_html)
+        self.assertNotRegex(
+            dialog_html,
+            r'id="bose-(?:power|volume-up|volume-down)-button"[^>]*disabled',
+        )
         self.assertIn('aria-label="Bluetooth and AUX unavailable"', dialog_html)
-        self.assertIn('aria-label="Volume up unavailable"', dialog_html)
-        self.assertIn('aria-label="Volume down unavailable"', dialog_html)
+        self.assertRegex(
+            dialog_html,
+            r'class="bose-future-control bose-source-control"[^>]*disabled',
+        )
+
+    def test_remote_controls_post_one_allowlisted_action_per_click(self) -> None:
+        app_js = APP_JS.read_text(encoding="utf-8")
+
+        self.assertEqual(
+            app_js.count('fetch(`/api/player/bose/control/${action}`, {'),
+            1,
+        )
+        self.assertIn('method: "POST"', app_js)
+        self.assertEqual(
+            app_js.count(
+                'boseVolumeUpButton.addEventListener("click", () => '
+                'sendBoseControlAction("volume-up"));'
+            ),
+            1,
+        )
+        self.assertEqual(
+            app_js.count(
+                'boseVolumeDownButton.addEventListener("click", () => '
+                'sendBoseControlAction("volume-down"));'
+            ),
+            1,
+        )
+        control_handler = app_js.split(
+            "async function sendBoseControlAction(action)",
+            1,
+        )[1].split("function closeBosePresetsFromBackdrop", 1)[0]
+        self.assertNotIn("bosePresetsDialog.close();", control_handler)
+
+    def test_power_requires_confirmation_before_sending_action(self) -> None:
+        app_js = APP_JS.read_text(encoding="utf-8")
+        power_handler = app_js.split("function toggleBosePower()", 1)[1].split(
+            "async function sendBoseControlAction(action)",
+            1,
+        )[0]
+
+        self.assertIn("window.confirm(bosePowerConfirmationMessage())", power_handler)
+        self.assertIn('sendBoseControlAction("power");', power_handler)
+        self.assertLess(power_handler.index("return;"), power_handler.index('"power"'))
+        self.assertEqual(
+            app_js.count(
+                'bosePowerButton.addEventListener("click", toggleBosePower);'
+            ),
+            1,
+        )
+        self.assertIn('return knownActivePlayback ? "Turn Bose off?" : "Toggle Bose power?";', app_js)
 
     def test_dialog_has_no_visible_header_or_close_button(self) -> None:
         index_html = INDEX_HTML.read_text(encoding="utf-8")

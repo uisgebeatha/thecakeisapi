@@ -219,11 +219,19 @@ h1 {
   padding: 0.35rem;
   background: var(--surface-subtle);
   color: var(--muted);
+  cursor: pointer;
 }
 
 .bose-future-control:disabled {
   cursor: not-allowed;
   opacity: 0.52;
+}
+
+.bose-future-control:not(:disabled):hover,
+.bose-future-control:not(:disabled):focus-visible {
+  border-color: var(--accent);
+  background: var(--accent-soft);
+  color: var(--accent);
 }
 
 .bose-future-control svg {

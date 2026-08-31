@@ -25,6 +25,10 @@ const bosePresetsDialog = document.querySelector("#bose-presets-dialog");
 const bosePresetsMessage = document.querySelector("#bose-presets-message");
 const bosePresetButtons = [...document.querySelectorAll(".bose-preset-button")];
 const boseCurrentItemTitle = document.querySelector("#bose-current-item-title");
+const bosePowerButton = document.querySelector("#bose-power-button");
+const boseVolumeUpButton = document.querySelector("#bose-volume-up-button");
+const boseVolumeDownButton = document.querySelector("#bose-volume-down-button");
+const boseControlButtons = [bosePowerButton, boseVolumeUpButton, boseVolumeDownButton];
 const settingsButton = document.querySelector("#settings-button");
 const settingsDialog = document.querySelector("#settings-dialog");
 const settingsCloseButton = document.querySelector("#settings-close-button");
@@ -39,6 +43,7 @@ let currentDirectoryFiles = [];
 let lastPlaybackState = null;
 let outputSelectionInitialized = false;
 let presetActivationInProgress = false;
+let boseControlInProgress = false;
 
 const PLAY_ENDPOINTS = Object.freeze({
   bose: "/api/player/bose/play",
@@ -724,6 +729,63 @@ function setBosePresetButtonsBusy(busy) {
   }
 }
 
+function bosePowerConfirmationMessage() {
+  const knownActivePlayback = Boolean(
+    lastPlaybackState?.bose?.external_playback_active ||
+      (lastPlaybackState?.active_output === "bose" && isActivePlayback(lastPlaybackState)),
+  );
+  return knownActivePlayback ? "Turn Bose off?" : "Toggle Bose power?";
+}
+
+function toggleBosePower() {
+  if (!window.confirm(bosePowerConfirmationMessage())) {
+    return;
+  }
+  sendBoseControlAction("power");
+}
+
+async function sendBoseControlAction(action) {
+  if (boseControlInProgress) {
+    return;
+  }
+
+  boseControlInProgress = true;
+  setBoseControlButtonsBusy(true);
+  bosePresetsMessage.textContent =
+    action === "power" ? "Sending Bose power command..." : "Adjusting Bose volume...";
+  bosePresetsMessage.dataset.state = "";
+
+  try {
+    const response = await fetch(`/api/player/bose/control/${action}`, {
+      method: "POST",
+    });
+    const data = await response.json();
+    if (!response.ok) {
+      throw new Error(apiErrorMessage(data, "Bose control action failed"));
+    }
+
+    lastPlaybackState = data;
+    renderPlaybackState(data);
+    bosePresetsMessage.textContent =
+      action === "power" ? "Power command sent; waiting for Bose status..." : "";
+    if (action === "power") {
+      refreshPlaybackStatus();
+    }
+  } catch (error) {
+    bosePresetsMessage.textContent = `Could not control Bose: ${error.message}`;
+    bosePresetsMessage.dataset.state = "error";
+  } finally {
+    boseControlInProgress = false;
+    setBoseControlButtonsBusy(false);
+  }
+}
+
+function setBoseControlButtonsBusy(busy) {
+  for (const button of boseControlButtons) {
+    button.disabled = busy;
+  }
+}
+
 function closeBosePresetsFromBackdrop(event) {
   if (event.target !== bosePresetsDialog) {
     return;
@@ -987,6 +1049,9 @@ outputSelector.addEventListener("change", () => {
 });
 
 bosePresetsButton.addEventListener("click", openBosePresets);
+bosePowerButton.addEventListener("click", toggleBosePower);
+boseVolumeUpButton.addEventListener("click", () => sendBoseControlAction("volume-up"));
+boseVolumeDownButton.addEventListener("click", () => sendBoseControlAction("volume-down"));
 bosePresetsDialog.addEventListener("click", closeBosePresetsFromBackdrop);
 for (const button of bosePresetButtons) {
   button.addEventListener("click", () => activateBosePreset(button));

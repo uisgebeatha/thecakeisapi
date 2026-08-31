@@ -4,8 +4,8 @@
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <title>thecakeisapi</title>
-    <link rel="stylesheet" href="/static/styles.css?v=__THECAKEISAPI_VERSION__&state=bose-panel-geometry">
-    <script src="/static/app.js?v=__THECAKEISAPI_VERSION__&state=bose-panel-layout" defer></script>
+    <link rel="stylesheet" href="/static/styles.css?v=__THECAKEISAPI_VERSION__&state=bose-controls">
+    <script src="/static/app.js?v=__THECAKEISAPI_VERSION__&state=bose-controls" defer></script>
   </head>
   <body>
     <main class="shell">
@@ -126,7 +126,7 @@
 
         <div class="bose-remote-layout" aria-label="Bose speaker controls">
           <div class="bose-future-controls bose-future-controls-left">
-            <button class="bose-future-control" type="button" disabled aria-label="Power unavailable" title="Power unavailable">
+            <button id="bose-power-button" class="bose-future-control" type="button" aria-label="Toggle Bose power" title="Power">
               <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false">
                 <path d="M12 3v8"></path>
                 <path d="M7.1 5.8a8 8 0 1 0 9.8 0"></path>
@@ -150,12 +150,12 @@
           </div>
 
           <div class="bose-future-controls bose-future-controls-right">
-            <button class="bose-future-control" type="button" disabled aria-label="Volume up unavailable" title="Volume up unavailable">
+            <button id="bose-volume-up-button" class="bose-future-control" type="button" aria-label="Bose volume up" title="Volume up">
               <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false">
                 <path d="M12 5v14M5 12h14"></path>
               </svg>
             </button>
-            <button class="bose-future-control" type="button" disabled aria-label="Volume down unavailable" title="Volume down unavailable">
+            <button id="bose-volume-down-button" class="bose-future-control" type="button" aria-label="Bose volume down" title="Volume down">
               <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false">
                 <path d="M5 12h14"></path>
               </svg>

@@ -13,6 +13,13 @@ class BosePlaybackError(Exception):
     """Raised when Bose or AfterTouch playback cannot be started."""
 
 
+BOSE_CONTROL_KEY_VALUES = {
+    "volume-up": "VOLUME_UP",
+    "volume-down": "VOLUME_DOWN",
+    "power": "POWER",
+}
+
+
 @dataclass(frozen=True)
 class BosePlaybackRequest:
     stream_url: str
@@ -455,7 +462,19 @@ class BoseNowPlayingClient:
         if preset_id not in range(1, 7):
             raise BosePlaybackError("Bose preset id must be between 1 and 6")
 
-        key_name = f"PRESET_{preset_id}"
+        self._send_key(
+            f"PRESET_{preset_id}",
+            f"Bose preset {preset_id} activation",
+        )
+
+    def send_control_action(self, action: str) -> None:
+        key_name = BOSE_CONTROL_KEY_VALUES.get(action)
+        if key_name is None:
+            raise BosePlaybackError(f"Unsupported Bose control action: {action}")
+
+        self._send_key(key_name, f"Bose {action} action")
+
+    def _send_key(self, key_name: str, error_context: str) -> None:
         for key_state in ("press", "release"):
             body = (
                 f'<key state="{key_state}" sender="Gabbo">'
@@ -472,7 +491,7 @@ class BoseNowPlayingClient:
                     response.read()
             except (URLError, OSError) as error:
                 raise BosePlaybackError(
-                    f"Bose preset {preset_id} activation failed: {error}",
+                    f"{error_context} failed: {error}",
                 ) from error
 
     def wait_for_custom_radio(

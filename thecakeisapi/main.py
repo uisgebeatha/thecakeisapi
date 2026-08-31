@@ -9,6 +9,7 @@ from pydantic import BaseModel, ConfigDict, Field
 
 from . import __version__
 from .bose import (
+    BOSE_CONTROL_KEY_VALUES,
     BoseNowPlayingClient,
     BosePlaybackError,
     BosePlaybackState,
@@ -249,6 +250,26 @@ def create_app(
         try:
             with app.state.playback_lock:
                 _select_bose_preset(app, preset_id)
+                return _playback_status(app)
+        except BosePlaybackError as error:
+            raise HTTPException(status_code=503, detail=str(error)) from error
+
+    @app.post("/api/player/bose/control/{action}")
+    def send_bose_control(action: str) -> dict[str, object]:
+        if action not in BOSE_CONTROL_KEY_VALUES:
+            raise HTTPException(
+                status_code=400,
+                detail="Unsupported Bose control action",
+            )
+        if app.state.bose_now_playing_client is None:
+            raise HTTPException(
+                status_code=503,
+                detail="bose_speaker_ip is not configured",
+            )
+
+        try:
+            with app.state.playback_lock:
+                app.state.bose_now_playing_client.send_control_action(action)
                 return _playback_status(app)
         except BosePlaybackError as error:
             raise HTTPException(status_code=503, detail=str(error)) from error

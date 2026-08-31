@@ -186,6 +186,8 @@
 - [x] Display Bose track, station, item, or source metadata for external playback.
 - [x] Add on-demand backend reading and activation for Bose physical presets 1-6.
 - [x] Add Bose preset browsing and selection from the web interface.
+- [x] Add Bose popup Power and single-step volume controls.
+- [ ] Add Bose AUX/Bluetooth source control.
 - [ ] Add library search.
 - [ ] Investigate USB enclosure disconnect behavior.
 

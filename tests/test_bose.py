@@ -479,6 +479,39 @@ class BosePresetTests(unittest.TestCase):
             with self.assertRaisesRegex(BosePlaybackError, "between 1 and 6"):
                 client.select_preset(preset_id)
 
+    @patch("thecakeisapi.bose.urlopen")
+    def test_control_actions_send_one_press_and_release_pair(self, urlopen_mock) -> None:
+        urlopen_mock.return_value.__enter__.return_value.read.return_value = (
+            b"<status>OK</status>"
+        )
+        client = BoseNowPlayingClient("192.168.42.101")
+
+        for action in ("volume-up", "volume-down", "power"):
+            client.send_control_action(action)
+
+        requests = [call.args[0] for call in urlopen_mock.call_args_list]
+        self.assertEqual(len(requests), 6)
+        for index, key_name in enumerate(("VOLUME_UP", "VOLUME_DOWN", "POWER")):
+            press_request = requests[index * 2]
+            release_request = requests[index * 2 + 1]
+            self.assertEqual(press_request.full_url, "http://192.168.42.101:8090/key")
+            self.assertEqual(press_request.get_method(), "POST")
+            self.assertEqual(
+                press_request.data.decode("utf-8"),
+                f'<key state="press" sender="Gabbo">{key_name}</key>',
+            )
+            self.assertEqual(
+                release_request.data.decode("utf-8"),
+                f'<key state="release" sender="Gabbo">{key_name}</key>',
+            )
+
+    @patch("thecakeisapi.bose.urlopen")
+    def test_invalid_control_action_is_rejected_before_transport(self, urlopen_mock) -> None:
+        with self.assertRaisesRegex(BosePlaybackError, "Unsupported Bose control action"):
+            BoseNowPlayingClient("192.168.42.101").send_control_action("mute")
+
+        urlopen_mock.assert_not_called()
+
 
 class BoseNowPlayingTests(unittest.TestCase):
     def test_external_display_name_prefers_track_then_station_then_item(self) -> None:
@@ -973,6 +1006,75 @@ class BosePresetApiTests(unittest.TestCase):
             self.assertFalse(app.state.bose_playback_state.external_playback_active)
             self.assertEqual(app.state.playback_queue.as_dict()["tracks"], [])
             self.assertEqual(app.state.bose_playback_state.state, "stopped")
+
+
+class BoseControlApiTests(unittest.TestCase):
+    def test_allowlisted_controls_preserve_queue_and_playback_ownership(self) -> None:
+        with temp_music_app() as app:
+            app.state.playback_queue.set_tracks(
+                [
+                    QueueTrack(path="first.mp3", name="first.mp3"),
+                    QueueTrack(path="second.mp3", name="second.mp3"),
+                ],
+                "first.mp3",
+            )
+            app.state.active_output = "bose"
+            app.state.bose_playback_state = app_owned_bose_state()
+            control_client = FakePresetClient()
+            app.state.bose_now_playing_client = control_client
+            endpoint = route_endpoint(
+                app,
+                "/api/player/bose/control/{action}",
+                "POST",
+            )
+
+            for action in ("volume-up", "volume-down", "power"):
+                status = endpoint(action)
+
+            self.assertEqual(
+                control_client.control_actions,
+                ["volume-up", "volume-down", "power"],
+            )
+            self.assertEqual(
+                [track["path"] for track in status["queue"]],
+                ["first.mp3", "second.mp3"],
+            )
+            self.assertEqual(status["now_playing"]["path"], "first.mp3")
+            self.assertEqual(status["active_output"], "bose")
+            self.assertTrue(app.state.bose_playback_state.has_app_ownership_context)
+            self.assertFalse(app.state.bose_playback_state.external_playback_active)
+
+    def test_power_control_does_not_create_playback_ownership(self) -> None:
+        with temp_music_app() as app:
+            control_client = FakePresetClient()
+            app.state.bose_now_playing_client = control_client
+
+            status = route_endpoint(
+                app,
+                "/api/player/bose/control/{action}",
+                "POST",
+            )("power")
+
+            self.assertEqual(control_client.control_actions, ["power"])
+            self.assertFalse(app.state.bose_playback_state.has_app_ownership_context)
+            self.assertIsNone(status["now_playing"])
+            self.assertEqual(status["queue"], [])
+
+    def test_invalid_control_action_is_rejected_by_api(self) -> None:
+        with temp_music_app() as app:
+            control_client = FakePresetClient()
+            app.state.bose_now_playing_client = control_client
+            endpoint = route_endpoint(
+                app,
+                "/api/player/bose/control/{action}",
+                "POST",
+            )
+
+            with self.assertRaises(HTTPException) as raised:
+                endpoint("mute")
+
+            self.assertEqual(raised.exception.status_code, 400)
+            self.assertEqual(control_client.control_actions, [])
 
 
 class BosePlaybackOwnershipTests(unittest.TestCase):
@@ -1820,6 +1922,7 @@ class FakePresetClient:
         self.fetch_error = fetch_error
         self.select_error = select_error
         self.selected_ids: list[int] = []
+        self.control_actions: list[str] = []
 
     def fetch_presets(self) -> list[BosePreset]:
         if self.fetch_error:
@@ -1830,6 +1933,9 @@ class FakePresetClient:
         if self.select_error:
             raise self.select_error
         self.selected_ids.append(preset_id)
+
+    def send_control_action(self, action: str) -> None:
+        self.control_actions.append(action)
 
     def fetch_status(self) -> BoseNowPlayingStatus:
         return parse_now_playing(self.status_xml)
