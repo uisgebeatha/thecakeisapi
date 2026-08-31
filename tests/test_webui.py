@@ -85,7 +85,7 @@ class WebUiTransportTests(unittest.TestCase):
         self.assertEqual(app_js.count("fetch(playbackStatusUrl())"), 2)
         self.assertIn("refreshPlaybackStatus();", app_js)
         self.assertIn(
-            "/static/app.js?v=__THECAKEISAPI_VERSION__&state=stable-volume-popup",
+            "/static/app.js?v=__THECAKEISAPI_VERSION__&state=quiet-bose-controls",
             index_html,
         )
 
@@ -576,10 +576,12 @@ class WebUiBosePresetTests(unittest.TestCase):
         )[1].split("function closeBosePresetsFromBackdrop", 1)[0]
         self.assertNotIn("bosePresetsDialog.close();", control_handler)
         self.assertNotIn("Adjusting Bose volume", control_handler)
+        self.assertNotIn("Sending Bose power command", control_handler)
+        self.assertNotIn("Power command sent", control_handler)
         self.assertIn('if (action === "power") {', control_handler)
-        self.assertIn('bosePresetsMessage.textContent = "Sending Bose power command...";', control_handler)
+        self.assertIn("refreshPlaybackStatus();", control_handler)
         self.assertIn(
-            'bosePresetsMessage.textContent = "Power command sent; waiting for Bose status...";',
+            "bosePresetsMessage.textContent = `Could not control Bose: ${error.message}`;",
             control_handler,
         )
 
