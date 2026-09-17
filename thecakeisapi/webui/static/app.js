@@ -138,6 +138,15 @@ function renderDirectory(directory) {
   }
 }
 
+function entryTypeLabel(entry) {
+  if (entry.type === "directory") {
+    return "DIR";
+  }
+
+  const extension = entry.name.slice(entry.name.lastIndexOf(".")).toUpperCase();
+  return extension === ".MP3" || extension === ".FLAC" ? extension.slice(1) : "AUD";
+}
+
 function createEntry(entry) {
   const item = document.createElement("li");
   item.className = "library-item";
@@ -156,7 +165,7 @@ function createEntry(entry) {
 
   const icon = document.createElement("span");
   icon.className = "entry-icon";
-  icon.textContent = entry.icon === "folder" ? "DIR" : "AUD";
+  icon.textContent = entryTypeLabel(entry);
 
   const details = document.createElement("span");
   details.className = "entry-details";
