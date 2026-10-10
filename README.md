@@ -3,6 +3,7 @@
 A lightweight self-hosted music player for Raspberry Pi with support for:
 
 * Local playback on a Raspberry Pi using mpv
+* Pi-local internet-radio playback through mpv
 * Bose SoundTouch playback through AfterTouch
 * Browser-based music library navigation
 * Queue management
@@ -94,6 +95,17 @@ Pi-local and Bose playback state are reported independently. Changing the output
 * Previous
 * Seeking
 * Progress display
+* API-started HTTP/HTTPS internet radio
+
+Internet radio is a transient Pi-local source outside the file queue. Start it with:
+
+```bash
+curl -X POST http://<pi-address>:8000/api/player/local/radio/play \
+  -H 'Content-Type: application/json' \
+  -d '{"url":"https://example.com/stream","name":"Example Radio"}'
+```
+
+Starting radio preserves the shared file queue and both output cursors and does not affect Bose playback. Live radio supports Stop in this first implementation; Pause, seek, Previous, Next, and Repeat are unavailable. Stopping radio returns Pi-local controls to the preserved file queue, so the next Play resumes the selected library file rather than restarting the stream. Unexpected stream termination is reported without advancing the file queue or retrying automatically.
 
 #### Bose SoundTouch
 

@@ -34,6 +34,7 @@ const helperNames = [
   "nowPlayingLabel",
   "isPausedPlayback",
   "isActivePlayback",
+  "isLocalRadioPlayback",
   "isQueueTrackCurrent",
   "transportEndpoint",
   "playPauseAction",
@@ -85,6 +86,19 @@ const playbackState = {
       external_playback_active: false,
     },
   },
+};
+
+const localRadioState = structuredClone(playbackState);
+localRadioState.outputs.local = {
+  backend: "mpv",
+  state: "playing",
+  paused: false,
+  source_type: "radio",
+  source_name: "Example FM",
+  elapsed_seconds: null,
+  duration_seconds: null,
+  now_playing: { path: null, name: "Example FM" },
+  message: "Playing live radio on Pi: Example FM",
 };
 
 function playbackResponse(state) {
@@ -202,6 +216,16 @@ test("external Bose title is rendered from the Bose projection", () => {
   assert.equal(helperContext.nowPlayingLabel(externalState.outputs.local), "Pi.mp3");
 });
 
+test("local radio renders its station without exposing a queue path", () => {
+  const localView = helperContext.playbackView(localRadioState, "local");
+
+  assert.equal(helperContext.isLocalRadioPlayback(localView), true);
+  assert.equal(helperContext.nowPlayingLabel(localView), "Example FM");
+  assert.equal(localView.now_playing.path, null);
+  assert.equal(localView.elapsed_seconds, null);
+  assert.equal(localView.duration_seconds, null);
+});
+
 test("transport and Play Pause use the selected projection", () => {
   assert.equal(helperContext.transportEndpoint("next", "local"), "/api/player/local/next");
   assert.equal(helperContext.transportEndpoint("next", "bose"), "/api/player/bose/next");
@@ -220,6 +244,88 @@ test("queue current state follows the selected output cursor", () => {
   assert.equal(helperContext.isQueueTrackCurrent(playbackState.queue[0], "bose"), false);
   assert.equal(helperContext.isQueueTrackCurrent(playbackState.queue[1], "local"), false);
   assert.equal(helperContext.isQueueTrackCurrent(playbackState.queue[1], "bose"), true);
+  assert.equal(
+    helperContext.isQueueTrackCurrent(
+      playbackState.queue[0],
+      "local",
+      localRadioState.outputs.local,
+    ),
+    false,
+  );
+});
+
+test("local radio disables finite-track controls without changing repeat state", () => {
+  function controlButton() {
+    return {
+      disabled: false,
+      dataset: {},
+      setAttribute(name, value) { this[name] = value; },
+    };
+  }
+
+  const controls = {
+    playButton: controlButton(),
+    stopButton: controlButton(),
+    previousButton: controlButton(),
+    nextButton: controlButton(),
+    repeatButton: controlButton(),
+  };
+  const controlContext = vm.createContext({
+    ...controls,
+    selectedOutput: () => "local",
+  });
+  vm.runInContext(
+    [
+      "isPausedPlayback",
+      "isLocalRadioPlayback",
+      "isExternalBosePlayback",
+      "isQueueTrackCurrent",
+      "updateTransportButtons",
+    ].map(extractFunction).join("\n") +
+      "\nthis.updateTransportButtons = updateTransportButtons;",
+    controlContext,
+  );
+
+  controlContext.updateTransportButtons(
+    localRadioState.outputs.local,
+    localRadioState.queue,
+    true,
+  );
+
+  assert.equal(controls.playButton.disabled, true);
+  assert.equal(controls.stopButton.disabled, false);
+  assert.equal(controls.previousButton.disabled, true);
+  assert.equal(controls.nextButton.disabled, true);
+  assert.equal(controls.repeatButton.disabled, true);
+  assert.equal(controls.repeatButton.dataset.active, "true");
+  assert.equal(helperContext.transportEndpoint("stop", "local"), "/api/player/local/stop");
+
+  controlContext.updateTransportButtons(
+    { ...localRadioState.outputs.local, state: "error", now_playing: null },
+    localRadioState.queue,
+    true,
+  );
+  assert.equal(controls.stopButton.disabled, false);
+});
+
+test("local radio timer is presented as live and remains non-seekable", () => {
+  const timerContext = vm.createContext({
+    elapsedTime: {},
+    durationTime: {},
+    trackProgress: {},
+  });
+  vm.runInContext(
+    ["formatTime", "isLocalRadioPlayback", "renderTimer"].map(extractFunction).join("\n") +
+      "\nthis.renderTimer = renderTimer;",
+    timerContext,
+  );
+
+  timerContext.renderTimer(localRadioState.outputs.local);
+
+  assert.equal(timerContext.elapsedTime.textContent, "LIVE");
+  assert.equal(timerContext.durationTime.textContent, "--:--");
+  assert.equal(timerContext.trackProgress.disabled, true);
+  assert.equal(timerContext.trackProgress.value, 0);
 });
 
 test("selector initialization prefers an active legacy output then a sole active output", () => {
@@ -294,6 +400,24 @@ test("explicit local selection survives repeated Bose-active status refreshes", 
     { output: "local", title: "Pi.mp3", state: "paused" },
   ]);
   assert.equal(flow.context.transportEndpoint("next"), "/api/player/local/next");
+});
+
+test("selected Pi radio survives polling while Bose is also active", async () => {
+  const flow = createSelectorFlow();
+
+  await flow.context.renderPlaybackResponse(playbackResponse(localRadioState), true);
+  flow.select("local");
+  await flow.context.renderPlaybackResponse(playbackResponse(localRadioState));
+  await flow.context.renderPlaybackResponse(playbackResponse(localRadioState));
+
+  assert.equal(flow.selectedOutput(), "local");
+  assert.equal(flow.selectorSyncCount(), 1);
+  assert.deepEqual(flow.rendered.at(-1), {
+    output: "local",
+    title: "Example FM",
+    state: "playing",
+  });
+  assert.equal(flow.context.transportEndpoint("stop"), "/api/player/local/stop");
 });
 
 test("explicit Bose selection survives repeated local-active status refreshes", async () => {

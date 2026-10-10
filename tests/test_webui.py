@@ -18,7 +18,11 @@ class WebUiTransportTests(unittest.TestCase):
         self.assertNotIn('id="pause-button"', index_html)
         self.assertNotIn("pauseButton", app_js)
         self.assertIn(
-            'const playPauseLabel = isPlaying ? "Pause" : isPaused ? "Resume" : "Play";',
+            'const playPauseLabel = localRadio && isPlaying',
+            app_js,
+        )
+        self.assertIn(
+            '? "Pause unavailable for live radio"',
             app_js,
         )
         self.assertIn(
@@ -53,7 +57,7 @@ class WebUiTransportTests(unittest.TestCase):
         self.assertIn('output === "bose" ? "is_current_bose" : "is_current_local"', app_js)
         self.assertIn("queue.some((track) => isQueueTrackCurrent", app_js)
         self.assertIn(
-            "playButton.disabled = externalBose || !hasTrack || isStarting;",
+            "playButton.disabled = externalBose || !hasTrack || isStarting || localRadio;",
             app_js,
         )
         self.assertNotIn("playButton.disabled = !hasTrack || isPlaying", app_js)
@@ -61,9 +65,28 @@ class WebUiTransportTests(unittest.TestCase):
     def test_queue_highlighting_uses_the_selected_output_cursor(self) -> None:
         app_js = APP_JS.read_text(encoding="utf-8")
 
-        self.assertIn("renderQueue(playbackState.queue || [], selectedOutput());", app_js)
-        self.assertIn("function isQueueTrackCurrent(track, output)", app_js)
+        self.assertIn(
+            "renderQueue(playbackState.queue || [], selectedOutput(), outputState);",
+            app_js,
+        )
+        self.assertIn(
+            "function isQueueTrackCurrent(track, output, outputState = null)",
+            app_js,
+        )
         self.assertIn("track[outputFlag] ?? track.is_current ?? false", app_js)
+
+    def test_local_radio_uses_existing_player_without_finite_track_controls(self) -> None:
+        app_js = APP_JS.read_text(encoding="utf-8")
+        index_html = INDEX_HTML.read_text(encoding="utf-8")
+
+        self.assertIn('outputState?.source_type === "radio"', app_js)
+        self.assertIn('elapsedTime.textContent = "LIVE";', app_js)
+        self.assertIn("previousButton.disabled = externalBose || localRadio || !hasTrack;", app_js)
+        self.assertIn("nextButton.disabled = externalBose || localRadio || !hasTrack;", app_js)
+        self.assertIn("repeatButton.disabled = externalBose || localRadio;", app_js)
+        self.assertIn("trackProgress.disabled = true;", app_js)
+        self.assertNotIn('name="radio_url"', index_html)
+        self.assertNotIn('name="radio_name"', index_html)
 
     def test_external_bose_metadata_is_rendered_without_queue_ownership(self) -> None:
         app_js = APP_JS.read_text(encoding="utf-8")
@@ -81,12 +104,18 @@ class WebUiTransportTests(unittest.TestCase):
 
         self.assertIn("stopButton.disabled =", app_js)
         self.assertIn(
-            'externalBose || !outputState.now_playing || outputState.state === "stopped";',
+            "(!outputState.now_playing && !localRadio)",
             app_js,
         )
-        self.assertIn("previousButton.disabled = externalBose || !hasTrack;", app_js)
-        self.assertIn("nextButton.disabled = externalBose || !hasTrack;", app_js)
-        self.assertIn("repeatButton.disabled = externalBose;", app_js)
+        self.assertIn(
+            "previousButton.disabled = externalBose || localRadio || !hasTrack;",
+            app_js,
+        )
+        self.assertIn(
+            "nextButton.disabled = externalBose || localRadio || !hasTrack;",
+            app_js,
+        )
+        self.assertIn("repeatButton.disabled = externalBose || localRadio;", app_js)
 
     def test_selected_bose_output_requests_rate_limited_external_observation(self) -> None:
         app_js = APP_JS.read_text(encoding="utf-8")

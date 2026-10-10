@@ -16,15 +16,15 @@ class MpvPlayer:
         self.mpv_command = mpv_command
         self.ipc_path = ipc_path
         self._process: subprocess.Popen[bytes] | None = None
-        self._current_path: Path | None = None
+        self._current_source: Path | str | None = None
         self._started_at: float | None = None
         self._paused = False
         self._lock = Lock()
 
-    def play(self, audio_path: Path) -> dict[str, object]:
+    def play(self, source: Path | str) -> dict[str, object]:
         with self._lock:
             self.stop()
-            command = self._build_command(audio_path)
+            command = self._build_command(source)
 
             try:
                 self._process = subprocess.Popen(
@@ -38,7 +38,7 @@ class MpvPlayer:
             except OSError as error:
                 raise PlayerError(f"mpv could not be started: {error}") from error
 
-            self._current_path = audio_path
+            self._current_source = source
             self._started_at = time.monotonic()
             self._paused = False
             return self.status()
@@ -80,7 +80,7 @@ class MpvPlayer:
                 self._process.wait(timeout=2)
 
         self._process = None
-        self._current_path = None
+        self._current_source = None
         self._started_at = None
         self._paused = False
         return self.status()
@@ -94,7 +94,7 @@ class MpvPlayer:
                 return False
 
             self._process = None
-            self._current_path = None
+            self._current_source = None
             self._started_at = None
             self._paused = False
             return True
@@ -110,6 +110,7 @@ class MpvPlayer:
                 "state": "stopped",
                 "process_id": None,
                 "path": None,
+                "source": None,
                 "ipc_path": str(self.ipc_path),
                 "elapsed_seconds": None,
                 "duration_seconds": None,
@@ -125,24 +126,28 @@ class MpvPlayer:
         if elapsed_seconds is None and self._started_at is not None and not self._paused:
             elapsed_seconds = max(0.0, time.monotonic() - self._started_at)
 
+        current_source = (
+            str(self._current_source) if self._current_source is not None else None
+        )
         return {
             "backend": "mpv",
             "state": "paused" if self._paused else "playing",
             "process_id": process_id,
-            "path": str(self._current_path) if self._current_path else None,
+            "path": current_source if isinstance(self._current_source, Path) else None,
+            "source": current_source,
             "ipc_path": str(self.ipc_path),
             "elapsed_seconds": elapsed_seconds,
             "duration_seconds": duration_seconds,
             "paused": self._paused,
         }
 
-    def _build_command(self, audio_path: Path) -> list[str]:
+    def _build_command(self, source: Path | str) -> list[str]:
         return [
             self.mpv_command,
             "--no-terminal",
             "--force-window=no",
             f"--input-ipc-server={self.ipc_path}",
-            str(audio_path),
+            str(source),
         ]
 
     def _require_running(self) -> None:

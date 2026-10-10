@@ -1,11 +1,13 @@
+from dataclasses import dataclass
 from pathlib import Path
 from secrets import token_urlsafe
 from threading import Event, Lock, Thread
+from urllib.parse import urlsplit
 
 from fastapi import FastAPI, HTTPException, Request
 from fastapi.responses import FileResponse, HTMLResponse
 from fastapi.staticfiles import StaticFiles
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 from . import __version__
 from .bose import (
@@ -55,6 +57,48 @@ class PlayRequest(BaseModel):
 
 class QueueAddRequest(BaseModel):
     queue_paths: list[str] = Field(default_factory=list)
+
+
+@dataclass
+class LocalRadioState:
+    stream_url: str
+    display_name: str
+    error_message: str | None = None
+
+
+class LocalRadioPlayRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    url: str = Field(min_length=1, max_length=2048)
+    name: str = Field(min_length=1, max_length=200)
+
+    @field_validator("url")
+    @classmethod
+    def validate_url(cls, value: str) -> str:
+        stream_url = value.strip()
+        if any(character.isspace() for character in stream_url):
+            raise ValueError("Radio URL must not contain whitespace")
+
+        try:
+            parsed_url = urlsplit(stream_url)
+            hostname = parsed_url.hostname
+            parsed_url.port
+        except ValueError as error:
+            raise ValueError("Radio URL is invalid") from error
+
+        if parsed_url.scheme.lower() not in {"http", "https"} or not hostname:
+            raise ValueError("Radio URL must be an absolute HTTP or HTTPS URL")
+        if parsed_url.username is not None or parsed_url.password is not None:
+            raise ValueError("Radio URL must not contain credentials")
+        return stream_url
+
+    @field_validator("name")
+    @classmethod
+    def validate_name(cls, value: str) -> str:
+        display_name = value.strip()
+        if not display_name:
+            raise ValueError("Radio name must not be blank")
+        return display_name
 
 
 class SettingsUpdateRequest(BaseModel):
@@ -115,6 +159,7 @@ def create_app(
     )
     app.state.playback_queue = PlaybackQueue()
     app.state.active_output = "local"
+    app.state.local_radio_state = None
     app.state.bose_playback_state = BosePlaybackState()
     app.state.bose_playback_id_factory = lambda: token_urlsafe(18)
     app.state.repeat_track = False
@@ -305,6 +350,17 @@ def create_app(
         except PlayerError as error:
             raise HTTPException(status_code=503, detail=str(error)) from error
 
+    @app.post("/api/player/local/radio/play")
+    def play_local_radio(request: LocalRadioPlayRequest) -> dict[str, object]:
+        try:
+            with app.state.playback_lock:
+                _play_local_radio(app, request.url, request.name)
+                app.state.active_output = "local"
+                app.state.playback_message = f"Playing live radio: {request.name}"
+                return _playback_status(app)
+        except PlayerError as error:
+            raise HTTPException(status_code=503, detail=str(error)) from error
+
     @app.post("/api/player/bose/play")
     def play_bose_file(
         path: str,
@@ -422,6 +478,11 @@ def create_app(
     def resume_local_playback() -> dict[str, object]:
         try:
             with app.state.playback_lock:
+                if app.state.local_radio_state is not None:
+                    app.state.playback_message = (
+                        "Live radio must be started from its radio source"
+                    )
+                    return _playback_status(app)
                 current_track = app.state.playback_queue.current("local")
                 if app.state.local_player.status()["state"] == "stopped":
                     if current_track is None:
@@ -448,6 +509,9 @@ def create_app(
     def pause_local_playback() -> dict[str, object]:
         try:
             with app.state.playback_lock:
+                if app.state.local_radio_state is not None:
+                    app.state.playback_message = "Pause is unavailable for live radio"
+                    return _playback_status(app)
                 app.state.local_player.pause()
                 app.state.playback_message = "Paused"
                 return _playback_status(app)
@@ -458,14 +522,21 @@ def create_app(
     def stop_local_playback() -> dict[str, object]:
         with app.state.playback_lock:
             app.state.active_output = "local"
+            stopped_radio = app.state.local_radio_state is not None
             app.state.local_player.stop()
-            app.state.playback_message = "Stopped"
+            app.state.local_radio_state = None
+            app.state.playback_message = (
+                "Stopped live radio" if stopped_radio else "Stopped"
+            )
             return _playback_status(app)
 
     @app.post("/api/player/local/seek")
     def seek_local_playback(seconds: float) -> dict[str, object]:
         try:
             with app.state.playback_lock:
+                if app.state.local_radio_state is not None:
+                    app.state.playback_message = "Seeking is unavailable for live radio"
+                    return _playback_status(app)
                 app.state.local_player.seek(seconds)
                 app.state.playback_message = f"Seeked to {int(max(0, seconds))} seconds"
                 return _playback_status(app)
@@ -475,6 +546,9 @@ def create_app(
     @app.post("/api/player/local/next")
     def play_next_local_track() -> dict[str, object]:
         with app.state.playback_lock:
+            if app.state.local_radio_state is not None:
+                app.state.playback_message = "Next is unavailable for live radio"
+                return _playback_status(app)
             next_track = app.state.playback_queue.next("local")
             if next_track is None:
                 app.state.local_player.stop()
@@ -485,6 +559,9 @@ def create_app(
     @app.post("/api/player/local/previous")
     def play_previous_local_track() -> dict[str, object]:
         with app.state.playback_lock:
+            if app.state.local_radio_state is not None:
+                app.state.playback_message = "Previous is unavailable for live radio"
+                return _playback_status(app)
             previous_track = app.state.playback_queue.previous("local")
             if previous_track is None:
                 current_track = app.state.playback_queue.current("local")
@@ -510,6 +587,9 @@ def create_app(
     @app.post("/api/player/local/repeat")
     def set_repeat_track(enabled: bool) -> dict[str, object]:
         with app.state.playback_lock:
+            if app.state.local_radio_state is not None:
+                app.state.playback_message = "Repeat is unavailable for live radio"
+                return _playback_status(app)
             app.state.repeat_track = enabled
             app.state.playback_message = (
                 "Repeat track on" if app.state.repeat_track else "Repeat track off"
@@ -524,6 +604,7 @@ def create_app(
                     _stop_bose_playback(app)
                 app.state.playback_queue.clear()
                 app.state.local_player.stop()
+                app.state.local_radio_state = None
                 app.state.playback_message = "Queue cleared"
                 return _playback_status(app)
         except BosePlaybackError as error:
@@ -725,7 +806,22 @@ def _play_bose_queue_track(app: FastAPI, track: QueueTrack) -> dict[str, object]
 
 def _play_track(app: FastAPI, track: QueueTrack) -> None:
     file_path = resolve_audio_file(app.state.settings.music_root, track.path)
+    app.state.local_radio_state = None
     app.state.local_player.play(file_path)
+
+
+def _play_local_radio(app: FastAPI, stream_url: str, display_name: str) -> None:
+    radio_state = LocalRadioState(
+        stream_url=stream_url,
+        display_name=display_name,
+    )
+    app.state.local_radio_state = radio_state
+    try:
+        app.state.local_player.play(stream_url)
+    except PlayerError as error:
+        radio_state.error_message = str(error)
+        app.state.playback_message = f"Could not start live radio: {display_name}"
+        raise
 
 
 def _select_bose_preset(app: FastAPI, preset_id: int) -> None:
@@ -891,6 +987,12 @@ def _sync_finished_playback(app: FastAPI) -> None:
 
 def _sync_local_playback(app: FastAPI) -> None:
     if not app.state.local_player.consume_finished():
+        return
+
+    radio_state = app.state.local_radio_state
+    if radio_state is not None:
+        radio_state.error_message = "Live radio playback stopped unexpectedly"
+        app.state.playback_message = radio_state.error_message
         return
 
     current_track = app.state.playback_queue.current("local")
@@ -1154,6 +1256,19 @@ def _playback_status(app: FastAPI) -> dict[str, object]:
         and app.state.bose_playback_state.external_playback_active
     ):
         current_track = None
+    legacy_now_playing = (
+        {
+            "path": current_track.path,
+            "name": current_track.name,
+        }
+        if current_track
+        else None
+    )
+    if (
+        app.state.active_output == "local"
+        and player_status.get("source_type") == "radio"
+    ):
+        legacy_now_playing = player_status["now_playing"]
 
     return {
         "active_output": app.state.active_output,
@@ -1165,12 +1280,7 @@ def _playback_status(app: FastAPI) -> dict[str, object]:
         "paused": player_status["paused"],
         "repeat_track": app.state.repeat_track,
         "message": app.state.playback_message,
-        "now_playing": {
-            "path": current_track.path,
-            "name": current_track.name,
-        }
-        if current_track
-        else None,
+        "now_playing": legacy_now_playing,
         "queue": queue_status["tracks"],
         "outputs": output_statuses,
         "bose": {
@@ -1216,7 +1326,32 @@ def _active_player_status(app: FastAPI) -> dict[str, object]:
 def _local_output_status(app: FastAPI) -> dict[str, object]:
     player_status = app.state.local_player.status()
     state = str(player_status["state"])
+    radio_state = app.state.local_radio_state
+    if radio_state is not None:
+        if radio_state.error_message:
+            state = "error"
+        now_playing = None
+        if state in {"playing", "paused"}:
+            now_playing = {
+                "path": None,
+                "name": radio_state.display_name,
+            }
+        return {
+            "backend": player_status["backend"],
+            "state": state,
+            "process_id": player_status["process_id"],
+            "elapsed_seconds": None,
+            "duration_seconds": None,
+            "paused": False,
+            "source_type": "radio",
+            "source_name": radio_state.display_name,
+            "now_playing": now_playing,
+            "message": _output_playback_message(app, "local", state),
+        }
+
     now_playing = None
+    source_type = "none"
+    source_name = None
     current_path = player_status.get("path")
     if state in {"playing", "paused"} and current_path:
         media_path = Path(str(current_path))
@@ -1228,6 +1363,8 @@ def _local_output_status(app: FastAPI) -> dict[str, object]:
             relative_path = None
 
         if relative_path is not None:
+            source_type = "library"
+            source_name = media_path.name
             now_playing = {
                 "path": relative_path.as_posix(),
                 "name": media_path.name,
@@ -1240,6 +1377,8 @@ def _local_output_status(app: FastAPI) -> dict[str, object]:
         "elapsed_seconds": player_status["elapsed_seconds"],
         "duration_seconds": player_status["duration_seconds"],
         "paused": player_status["paused"],
+        "source_type": source_type,
+        "source_name": source_name,
         "now_playing": now_playing,
         "message": _output_playback_message(app, "local", state),
     }
@@ -1309,6 +1448,14 @@ def _output_playback_message(
             "error": app.state.bose_playback_state.warning or "Bose playback error",
         }
         return state_messages.get(state, "Stopped Bose playback")
+
+    radio_state = app.state.local_radio_state
+    if radio_state is not None:
+        if radio_state.error_message:
+            return radio_state.error_message
+        if state == "playing":
+            return f"Playing live radio on Pi: {radio_state.display_name}"
+        return "Live radio stopped"
 
     state_messages = {
         "playing": "Playing on Pi",

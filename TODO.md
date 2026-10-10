@@ -196,6 +196,14 @@
 1. [x] Maintain independent Pi-local and Bose playback state, with accurate Now Playing when switching outputs.
 2. [x] Allow Pi-local and Bose playback to continue independently when starting the other output.
 
+## Pi-local Internet Radio
+
+- [x] Add API-first HTTP/HTTPS internet-radio playback through local mpv.
+- [x] Keep radio outside the shared file queue and preserve both queue cursors.
+- [x] Prevent radio termination from advancing or repeating queued files.
+- [x] Show local radio state in the existing Now Playing UI.
+- [ ] Add TheCakeIsAPI-managed radio presets.
+
 ## Design Investigation
 
 ### Native Bose UPnP / DLNA Playback

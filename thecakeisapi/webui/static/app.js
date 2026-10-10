@@ -390,12 +390,12 @@ function renderPlaybackState(playbackState) {
   const externalBose = isExternalBosePlayback(outputState);
   nowPlayingTitle.textContent = nowPlayingLabel(outputState);
   playbackStatus.textContent = playbackMessage(outputState);
-  playbackStatus.dataset.state = (
-    outputState.state === "stopped" && !externalBose ? "" : "ok"
-  );
+  playbackStatus.dataset.state = outputState.state === "error"
+    ? "error"
+    : outputState.state === "stopped" && !externalBose ? "" : "ok";
 
   renderTimer(outputState);
-  renderQueue(playbackState.queue || [], selectedOutput());
+  renderQueue(playbackState.queue || [], selectedOutput(), outputState);
   renderActiveOutput(outputState);
   updateTransportButtons(
     outputState,
@@ -425,13 +425,22 @@ function renderActiveOutput(outputState) {
     return;
   }
 
+  if (isLocalRadioPlayback(outputState) && outputState.state === "error") {
+    activeOutput.textContent = "Pi 4 Local · Live Radio · Error";
+    activeOutput.dataset.state = "error";
+    return;
+  }
+
   if (!isActivePlayback(outputState)) {
     activeOutput.textContent = "No active output";
     activeOutput.dataset.state = "idle";
     return;
   }
 
-  const outputName = selectedOutput() === "bose" ? "Bose" : "Pi 4 Local";
+  let outputName = selectedOutput() === "bose" ? "Bose" : "Pi 4 Local";
+  if (isLocalRadioPlayback(outputState)) {
+    outputName = `${outputName} · Live Radio`;
+  }
   const stateName = {
     paused: "Paused",
     playing: "Playing",
@@ -462,6 +471,15 @@ function playbackMessage(outputState) {
 }
 
 function renderTimer(playbackState) {
+  if (isLocalRadioPlayback(playbackState)) {
+    elapsedTime.textContent = "LIVE";
+    durationTime.textContent = "--:--";
+    trackProgress.max = 100;
+    trackProgress.value = 0;
+    trackProgress.disabled = true;
+    return;
+  }
+
   const elapsed = playbackState.elapsed_seconds;
   const duration = playbackState.duration_seconds;
 
@@ -479,14 +497,14 @@ function renderTimer(playbackState) {
   }
 }
 
-function renderQueue(queue, output) {
+function renderQueue(queue, output, outputState = null) {
   queueList.replaceChildren();
   queueStatus.textContent = queue.length ? `${queue.length} tracks queued` : "No tracks queued.";
   clearQueueButton.disabled = queue.length === 0;
 
   for (const track of queue) {
     const item = document.createElement("li");
-    item.className = isQueueTrackCurrent(track, output)
+    item.className = isQueueTrackCurrent(track, output, outputState)
       ? "queue-item current"
       : "queue-item";
 
@@ -507,7 +525,10 @@ function renderQueue(queue, output) {
   }
 }
 
-function isQueueTrackCurrent(track, output) {
+function isQueueTrackCurrent(track, output, outputState = null) {
+  if (output === "local" && isLocalRadioPlayback(outputState)) {
+    return false;
+  }
   const outputFlag = output === "bose" ? "is_current_bose" : "is_current_local";
   return track[outputFlag] ?? track.is_current ?? false;
 }
@@ -533,25 +554,30 @@ function moveQueueTrack(path, direction) {
 
 function updateTransportButtons(outputState, queue, repeatTrack) {
   const externalBose = isExternalBosePlayback(outputState);
+  const localRadio = isLocalRadioPlayback(outputState);
   const hasTrack = Boolean(
     outputState.now_playing ||
-      queue.some((track) => isQueueTrackCurrent(track, selectedOutput())),
+      queue.some((track) => isQueueTrackCurrent(track, selectedOutput(), outputState)),
   );
   const isPlaying = outputState.state === "playing";
   const isPaused = isPausedPlayback(outputState);
   const isStarting = outputState.state === "starting";
-  const playPauseLabel = isPlaying ? "Pause" : isPaused ? "Resume" : "Play";
+  const playPauseLabel = localRadio && isPlaying
+    ? "Pause unavailable for live radio"
+    : isPlaying ? "Pause" : isPaused ? "Resume" : "Play";
   const repeatLabel = repeatTrack ? "Repeat track on" : "Repeat track off";
 
-  playButton.disabled = externalBose || !hasTrack || isStarting;
+  playButton.disabled = externalBose || !hasTrack || isStarting || localRadio;
   playButton.dataset.controlState = isPlaying ? "pause" : "play";
   playButton.setAttribute("aria-label", playPauseLabel);
   playButton.title = playPauseLabel;
   stopButton.disabled =
-    externalBose || !outputState.now_playing || outputState.state === "stopped";
-  previousButton.disabled = externalBose || !hasTrack;
-  nextButton.disabled = externalBose || !hasTrack;
-  repeatButton.disabled = externalBose;
+    externalBose ||
+    (!outputState.now_playing && !localRadio) ||
+    outputState.state === "stopped";
+  previousButton.disabled = externalBose || localRadio || !hasTrack;
+  nextButton.disabled = externalBose || localRadio || !hasTrack;
+  repeatButton.disabled = externalBose || localRadio;
   repeatButton.dataset.active = repeatTrack ? "true" : "false";
   repeatButton.setAttribute("aria-pressed", repeatTrack ? "true" : "false");
   repeatButton.setAttribute("aria-label", repeatLabel);
@@ -560,6 +586,10 @@ function updateTransportButtons(outputState, queue, repeatTrack) {
 
 function isPausedPlayback(playbackState) {
   return playbackState?.state === "paused" || playbackState?.paused === true;
+}
+
+function isLocalRadioPlayback(outputState) {
+  return outputState?.source_type === "radio";
 }
 
 function isActivePlayback(playbackState) {
@@ -1077,6 +1107,13 @@ repeatButton.addEventListener("click", () => {
 trackProgress.addEventListener("change", () => {
   if (transportOutput() === "bose") {
     playbackStatus.textContent = "Seeking is not supported for Bose output yet.";
+    playbackStatus.dataset.state = "";
+    return;
+  }
+
+  const selectedState = playbackView(lastPlaybackState, selectedOutput());
+  if (isLocalRadioPlayback(selectedState)) {
+    playbackStatus.textContent = "Seeking is unavailable for live radio.";
     playbackStatus.dataset.state = "";
     return;
   }
