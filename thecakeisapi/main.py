@@ -285,7 +285,11 @@ def create_app(
                     app_settings.music_root,
                     request.queue_paths if request else [],
                 )
-                selected_track = app.state.playback_queue.set_tracks(queue_tracks, path)
+                selected_track = app.state.playback_queue.set_tracks(
+                    queue_tracks,
+                    path,
+                    "local",
+                )
                 _play_track(app, selected_track)
                 app.state.active_output = "local"
                 app.state.playback_message = f"Playing {selected_track.name}"
@@ -312,7 +316,11 @@ def create_app(
                     app_settings.music_root,
                     request.queue_paths if request else [],
                 )
-                selected_track = app.state.playback_queue.set_tracks(queue_tracks, path)
+                selected_track = app.state.playback_queue.set_tracks(
+                    queue_tracks,
+                    path,
+                    "bose",
+                )
                 _play_bose_track(app, selected_track)
                 app.state.active_output = "bose"
                 app.state.playback_message = _bose_playback_message(selected_track.name, app)
@@ -330,13 +338,16 @@ def create_app(
     def replay_current_bose_file() -> dict[str, object]:
         try:
             with app.state.playback_lock:
+                if app.state.bose_playback_state.external_playback_active:
+                    app.state.playback_message = "Bose playback is controlled externally"
+                    return _playback_status(app)
                 if app.state.bose_playback_state.state == "paused":
                     _resume_bose_playback(app)
                     app.state.active_output = "bose"
                     app.state.playback_message = "Restarted Bose playback; timer reset"
                     return _playback_status(app)
 
-                current_track = app.state.playback_queue.current()
+                current_track = app.state.playback_queue.current("bose")
                 if current_track is None:
                     app.state.playback_message = "No track is selected"
                     return _playback_status(app)
@@ -367,7 +378,10 @@ def create_app(
     @app.post("/api/player/bose/next")
     def play_next_bose_track() -> dict[str, object]:
         with app.state.playback_lock:
-            next_track = app.state.playback_queue.next()
+            if app.state.bose_playback_state.external_playback_active:
+                app.state.playback_message = "Bose playback is controlled externally"
+                return _playback_status(app)
+            next_track = app.state.playback_queue.next("bose")
             if next_track is None:
                 app.state.playback_message = "End of queue"
                 return _playback_status(app)
@@ -376,9 +390,12 @@ def create_app(
     @app.post("/api/player/bose/previous")
     def play_previous_bose_track() -> dict[str, object]:
         with app.state.playback_lock:
-            previous_track = app.state.playback_queue.previous()
+            if app.state.bose_playback_state.external_playback_active:
+                app.state.playback_message = "Bose playback is controlled externally"
+                return _playback_status(app)
+            previous_track = app.state.playback_queue.previous("bose")
             if previous_track is None:
-                current_track = app.state.playback_queue.current()
+                current_track = app.state.playback_queue.current("bose")
                 if current_track is None:
                     app.state.playback_message = "No track is selected"
                     return _playback_status(app)
@@ -405,14 +422,13 @@ def create_app(
     def resume_local_playback() -> dict[str, object]:
         try:
             with app.state.playback_lock:
-                current_track = app.state.playback_queue.current()
+                current_track = app.state.playback_queue.current("local")
                 if app.state.local_player.status()["state"] == "stopped":
                     if current_track is None:
                         app.state.playback_message = "No track is selected"
                         return _playback_status(app)
                     _play_track(app, current_track)
                 else:
-                    _stop_bose_if_active(app)
                     app.state.local_player.resume()
                 app.state.active_output = "local"
                 app.state.playback_message = "Playing on Pi"
@@ -459,7 +475,7 @@ def create_app(
     @app.post("/api/player/local/next")
     def play_next_local_track() -> dict[str, object]:
         with app.state.playback_lock:
-            next_track = app.state.playback_queue.next()
+            next_track = app.state.playback_queue.next("local")
             if next_track is None:
                 app.state.local_player.stop()
                 app.state.playback_message = "End of queue"
@@ -469,9 +485,9 @@ def create_app(
     @app.post("/api/player/local/previous")
     def play_previous_local_track() -> dict[str, object]:
         with app.state.playback_lock:
-            previous_track = app.state.playback_queue.previous()
+            previous_track = app.state.playback_queue.previous("local")
             if previous_track is None:
-                current_track = app.state.playback_queue.current()
+                current_track = app.state.playback_queue.current("local")
                 if current_track is None:
                     app.state.playback_message = "No track is selected"
                     return _playback_status(app)
@@ -502,11 +518,16 @@ def create_app(
 
     @app.post("/api/player/local/queue/clear")
     def clear_local_queue() -> dict[str, object]:
-        with app.state.playback_lock:
-            app.state.playback_queue.clear()
-            app.state.local_player.stop()
-            app.state.playback_message = "Queue cleared"
-            return _playback_status(app)
+        try:
+            with app.state.playback_lock:
+                if app.state.bose_playback_state.has_app_ownership_context:
+                    _stop_bose_playback(app)
+                app.state.playback_queue.clear()
+                app.state.local_player.stop()
+                app.state.playback_message = "Queue cleared"
+                return _playback_status(app)
+        except BosePlaybackError as error:
+            raise HTTPException(status_code=503, detail=str(error)) from error
 
     @app.post("/api/player/local/queue/add")
     def add_local_queue_tracks(request: QueueAddRequest) -> dict[str, object]:
@@ -533,32 +554,61 @@ def create_app(
     @app.post("/api/player/local/queue/remove")
     def remove_local_queue_track(path: str) -> dict[str, object]:
         with app.state.playback_lock:
-            next_current_track, removed_current = app.state.playback_queue.remove(path)
-            if removed_current:
-                if next_current_track is None:
-                    app.state.local_player.stop()
-                    app.state.playback_message = "Queue empty"
-                    return _playback_status(app)
+            local_status = app.state.local_player.status()
+            bose_state = app.state.bose_playback_state
+            local_was_playing_removed_track = _local_status_matches_track(
+                app,
+                local_status,
+                path,
+            )
+            bose_was_playing_removed_track = (
+                bose_state.state in {"starting", "playing", "paused"}
+                and bose_state.has_app_ownership_context
+                and not bose_state.external_playback_active
+                and bose_state.track_path == path
+            )
 
-                if app.state.active_output == "bose":
-                    return _play_bose_queue_track(app, next_current_track)
+            removal = app.state.playback_queue.remove(path)
+            playback_errors: list[Exception] = []
 
+            if removal.local.removed_current and local_was_playing_removed_track:
                 try:
-                    app.state.active_output = "local"
-                    _play_track(app, next_current_track)
-                    app.state.playback_message = f"Playing {next_current_track.name}"
-                except LibraryPathError as error:
-                    raise HTTPException(status_code=400, detail=str(error)) from error
-                except LibraryNotFoundError as error:
-                    raise HTTPException(status_code=404, detail=str(error)) from error
-                except UnsupportedAudioFileError as error:
-                    raise HTTPException(status_code=415, detail=str(error)) from error
-                except BosePlaybackError as error:
-                    raise HTTPException(status_code=503, detail=str(error)) from error
-                except PlayerError as error:
-                    raise HTTPException(status_code=503, detail=str(error)) from error
-            else:
-                app.state.playback_message = "Removed track from queue"
+                    if removal.local.current_track is None:
+                        app.state.local_player.stop()
+                    else:
+                        _play_track(app, removal.local.current_track)
+                except (
+                    LibraryPathError,
+                    LibraryNotFoundError,
+                    UnsupportedAudioFileError,
+                    PlayerError,
+                ) as error:
+                    playback_errors.append(error)
+
+            if removal.bose.removed_current and bose_was_playing_removed_track:
+                try:
+                    if removal.bose.current_track is None:
+                        _stop_bose_playback(app)
+                    else:
+                        _play_bose_track(app, removal.bose.current_track)
+                except (
+                    LibraryPathError,
+                    LibraryNotFoundError,
+                    UnsupportedAudioFileError,
+                    BosePlaybackError,
+                ) as error:
+                    playback_errors.append(error)
+
+            if playback_errors:
+                _raise_playback_http_exception(playback_errors[0])
+
+            queue_is_empty = not app.state.playback_queue.as_dict(
+                app.state.active_output,
+            )["tracks"]
+            app.state.playback_message = (
+                "Queue empty" if removal.removed and queue_is_empty
+                else "Removed track from queue"
+            )
             return _playback_status(app)
 
     @app.post("/api/player/local/queue/move-up")
@@ -598,6 +648,39 @@ def _validated_queue_tracks(music_root: Path, queue_paths: list[str]) -> list[Qu
         file_path = resolve_audio_file(music_root, path)
         tracks.append(QueueTrack(path=path, name=file_path.name))
     return tracks
+
+
+def _local_status_matches_track(
+    app: FastAPI,
+    player_status: dict[str, object],
+    track_path: str,
+) -> bool:
+    if player_status.get("state") not in {"playing", "paused"}:
+        return False
+
+    current_path = player_status.get("path")
+    if not current_path:
+        return False
+
+    try:
+        relative_path = Path(str(current_path)).resolve().relative_to(
+            app.state.settings.music_root.resolve(),
+        )
+    except (OSError, ValueError):
+        return False
+
+    return relative_path.as_posix() == track_path
+
+
+def _raise_playback_http_exception(error: Exception) -> None:
+    status_code = 503
+    if isinstance(error, LibraryPathError):
+        status_code = 400
+    elif isinstance(error, LibraryNotFoundError):
+        status_code = 404
+    elif isinstance(error, UnsupportedAudioFileError):
+        status_code = 415
+    raise HTTPException(status_code=status_code, detail=str(error)) from error
 
 
 def _play_queue_track(app: FastAPI, track: QueueTrack | None) -> dict[str, object]:
@@ -641,7 +724,6 @@ def _play_bose_queue_track(app: FastAPI, track: QueueTrack) -> dict[str, object]
 
 
 def _play_track(app: FastAPI, track: QueueTrack) -> None:
-    _stop_bose_if_active(app)
     file_path = resolve_audio_file(app.state.settings.music_root, track.path)
     app.state.local_player.play(file_path)
 
@@ -652,8 +734,7 @@ def _select_bose_preset(app: FastAPI, preset_id: int) -> None:
     if app.state.bose_now_playing_client is None:
         raise BosePlaybackError("bose_speaker_ip is not configured")
 
-    app.state.local_player.stop()
-    app.state.playback_queue.clear()
+    app.state.playback_queue.clear_cursor("bose")
     app.state.bose_playback_state = BosePlaybackState()
     app.state.active_output = "bose"
 
@@ -691,7 +772,6 @@ def _play_bose_track(app: FastAPI, track: QueueTrack) -> None:
     if not app.state.settings.public_base_url:
         raise BosePlaybackError("public_base_url is not configured")
 
-    app.state.local_player.stop()
     file_path = resolve_audio_file(app.state.settings.music_root, track.path)
     stream_url = build_library_stream_url(app.state.settings.public_base_url, track.path)
     ownership_stream_url = build_library_stream_url(
@@ -804,29 +884,16 @@ def _resume_bose_playback(app: FastAPI) -> None:
     app.state.bose_playback_state.resume_from_start()
 
 
-def _stop_bose_if_active(app: FastAPI) -> None:
-    if app.state.active_output != "bose":
-        return
-
-    if app.state.bose_playback_state.state in {"stopped", "ended"}:
-        app.state.bose_playback_state.stop()
-        return
-
-    _stop_bose_playback(app)
-
-
 def _sync_finished_playback(app: FastAPI) -> None:
-    if app.state.active_output == "bose":
-        _sync_bose_playback(app)
-        return
+    _sync_local_playback(app)
+    _sync_bose_playback(app)
 
-    if app.state.active_output != "local":
-        return
 
+def _sync_local_playback(app: FastAPI) -> None:
     if not app.state.local_player.consume_finished():
         return
 
-    current_track = app.state.playback_queue.current()
+    current_track = app.state.playback_queue.current("local")
     if current_track is None:
         app.state.playback_message = "Stopped"
         return
@@ -839,7 +906,7 @@ def _sync_finished_playback(app: FastAPI) -> None:
             app.state.playback_message = "Could not repeat track"
         return
 
-    next_track = app.state.playback_queue.next()
+    next_track = app.state.playback_queue.next("local")
     if next_track is None:
         app.state.playback_message = "End of queue"
         return
@@ -882,7 +949,7 @@ def _sync_bose_playback(app: FastAPI) -> None:
     ):
         return
 
-    current_track = app.state.playback_queue.current()
+    current_track = app.state.playback_queue.current("bose")
     if current_track is None:
         app.state.bose_playback_state.ended()
         app.state.playback_message = "End of queue"
@@ -897,7 +964,7 @@ def _sync_bose_playback(app: FastAPI) -> None:
             app.state.playback_message = "Could not repeat Bose track"
         return
 
-    next_track = app.state.playback_queue.next()
+    next_track = app.state.playback_queue.next("bose")
     if next_track is None:
         app.state.bose_playback_state.ended()
         app.state.playback_message = "End of queue"
@@ -919,11 +986,6 @@ def _poll_bose_playback_state(
     """Return whether an expected app-initiated transition gap was observed."""
     playback_state = app.state.bose_playback_state
     if playback_state.state not in {"starting", "playing", "paused"}:
-        return False
-    if (
-        app.state.active_output != "bose"
-        and not playback_state.has_app_ownership_context
-    ):
         return False
     if app.state.bose_now_playing_client is None:
         return False
@@ -1028,10 +1090,7 @@ def _observe_external_bose_playback(
     ):
         _poll_bose_playback_state(app, now_monotonic=now_monotonic)
         return
-    if (
-        app.state.active_output == "bose"
-        and playback_state.state in {"starting", "playing", "paused"}
-    ):
+    if playback_state.state in {"starting", "playing", "paused"}:
         return
     if not playback_state.status_poll_due(
         app.state.settings.bose_state_poll_interval_seconds,
@@ -1088,8 +1147,8 @@ def _playback_status(app: FastAPI) -> dict[str, object]:
         app.state.active_output,
         output_statuses["local"],
     )
-    queue_status = app.state.playback_queue.as_dict()
-    current_track = app.state.playback_queue.current()
+    queue_status = app.state.playback_queue.as_dict(app.state.active_output)
+    current_track = app.state.playback_queue.current(app.state.active_output)
     if (
         app.state.active_output == "bose"
         and app.state.bose_playback_state.external_playback_active

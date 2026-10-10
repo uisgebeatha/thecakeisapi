@@ -33,6 +33,7 @@ from thecakeisapi.main import (
     _select_bose_preset,
     _stop_bose_playback,
     _sync_bose_playback,
+    _sync_finished_playback,
     create_app,
 )
 from thecakeisapi.playlist import QueueTrack
@@ -793,6 +794,7 @@ class PlaybackCleanupTests(unittest.TestCase):
             app.state.playback_queue.set_tracks(
                 [QueueTrack(path="first.mp3", name="first.mp3")],
                 "first.mp3",
+                "bose",
             )
             app.state.active_output = "bose"
             app.state.bose_playback_state = BosePlaybackState(
@@ -815,6 +817,7 @@ class PlaybackCleanupTests(unittest.TestCase):
             app.state.playback_queue.set_tracks(
                 [QueueTrack(path="first.mp3", name="first.mp3")],
                 "first.mp3",
+                "bose",
             )
             app.state.active_output = "bose"
             app.state.bose_playback_state = BosePlaybackState(
@@ -833,17 +836,21 @@ class PlaybackCleanupTests(unittest.TestCase):
             self.assertTrue(status["paused"])
             self.assertEqual(status["elapsed_seconds"], 3.0)
 
-    def test_starting_bose_stops_local_playback_first(self) -> None:
+    def test_starting_bose_leaves_local_playback_running(self) -> None:
         with temp_music_app() as app:
-            local_player = FakeLocalPlayer()
+            local_player = FakeLocalPlayer(
+                state="playing",
+                path=app.state.settings.music_root / "second.mp3",
+            )
             app.state.local_player = local_player
 
             _play_bose_track(app, QueueTrack(path="first.mp3", name="first.mp3"))
 
-            self.assertEqual(local_player.stop_count, 1)
+            self.assertEqual(local_player.stop_count, 0)
+            self.assertEqual(local_player.status()["state"], "playing")
             self.assertEqual(app.state.bose_client.played_names, ["first.mp3"])
 
-    def test_starting_local_playback_stops_active_bose_first(self) -> None:
+    def test_starting_local_playback_leaves_active_bose_running(self) -> None:
         with temp_music_app() as app:
             local_player = FakeLocalPlayer()
             app.state.local_player = local_player
@@ -855,7 +862,8 @@ class PlaybackCleanupTests(unittest.TestCase):
 
             _play_track(app, QueueTrack(path="first.mp3", name="first.mp3"))
 
-            self.assertTrue(app.state.bose_client.stopped)
+            self.assertFalse(app.state.bose_client.stopped)
+            self.assertTrue(app.state.bose_playback_state.ownership_confirmed)
             self.assertEqual(local_player.played_paths, ["first.mp3"])
 
 
@@ -872,6 +880,7 @@ class IndependentPlaybackProjectionTests(unittest.TestCase):
             app.state.playback_queue.set_tracks(
                 [QueueTrack(path="first.mp3", name="first.mp3")],
                 "first.mp3",
+                "bose",
             )
             app.state.active_output = "bose"
             app.state.bose_playback_state = app_owned_bose_state(
@@ -909,6 +918,7 @@ class IndependentPlaybackProjectionTests(unittest.TestCase):
             app.state.playback_queue.set_tracks(
                 [QueueTrack(path="first.mp3", name="first.mp3")],
                 "first.mp3",
+                "local",
             )
             app.state.repeat_track = True
             app.state.bose_playback_state = BosePlaybackState(
@@ -977,6 +987,182 @@ class IndependentPlaybackProjectionTests(unittest.TestCase):
             self.assertEqual(app.state.bose_client.played_names, [])
 
 
+class IndependentPlaybackControlTests(unittest.TestCase):
+    def queue_tracks(self) -> list[QueueTrack]:
+        return [
+            QueueTrack(path="first.mp3", name="first.mp3"),
+            QueueTrack(path="second.mp3", name="second.mp3"),
+            QueueTrack(path="third.mp3", name="third.mp3"),
+        ]
+
+    def test_local_resume_next_and_previous_leave_bose_untouched(self) -> None:
+        with temp_music_app() as app:
+            queue_tracks = self.queue_tracks()
+            app.state.playback_queue.set_tracks(queue_tracks, "first.mp3", "local")
+            app.state.playback_queue.set_tracks(queue_tracks, "third.mp3", "bose")
+            app.state.local_player = FakeLocalPlayer()
+            app.state.bose_playback_state = app_owned_bose_state(
+                track_path="third.mp3",
+                track_name="third.mp3",
+                ownership_stream_url=test_stream_url("third.mp3"),
+            )
+
+            route_endpoint(app, "/api/player/local/resume", "POST")()
+            route_endpoint(app, "/api/player/local/next", "POST")()
+            route_endpoint(app, "/api/player/local/previous", "POST")()
+
+            self.assertEqual(app.state.playback_queue.current("local").path, "first.mp3")
+            self.assertEqual(app.state.playback_queue.current("bose").path, "third.mp3")
+            self.assertEqual(
+                app.state.local_player.played_paths,
+                ["first.mp3", "second.mp3", "first.mp3"],
+            )
+            self.assertFalse(app.state.bose_client.stopped)
+            self.assertEqual(app.state.bose_client.played_names, [])
+
+    def test_bose_next_and_previous_leave_local_untouched(self) -> None:
+        with temp_music_app() as app:
+            queue_tracks = self.queue_tracks()
+            app.state.playback_queue.set_tracks(queue_tracks, "third.mp3", "local")
+            app.state.playback_queue.set_tracks(queue_tracks, "first.mp3", "bose")
+            app.state.local_player = FakeLocalPlayer(
+                state="playing",
+                path=app.state.settings.music_root / "third.mp3",
+            )
+
+            route_endpoint(app, "/api/player/bose/resume", "POST")()
+            route_endpoint(app, "/api/player/bose/next", "POST")()
+            route_endpoint(app, "/api/player/bose/previous", "POST")()
+
+            self.assertEqual(app.state.playback_queue.current("local").path, "third.mp3")
+            self.assertEqual(app.state.playback_queue.current("bose").path, "first.mp3")
+            self.assertEqual(
+                app.state.bose_client.played_names,
+                ["first.mp3", "second.mp3", "first.mp3"],
+            )
+            self.assertEqual(app.state.local_player.stop_count, 0)
+
+    def test_local_completion_advances_only_local_cursor(self) -> None:
+        with temp_music_app() as app:
+            queue_tracks = self.queue_tracks()
+            app.state.playback_queue.set_tracks(queue_tracks, "first.mp3", "local")
+            app.state.playback_queue.set_tracks(queue_tracks, "third.mp3", "bose")
+            app.state.local_player = FakeLocalPlayer(
+                state="playing",
+                path=app.state.settings.music_root / "first.mp3",
+                finished=True,
+            )
+
+            _sync_finished_playback(app)
+
+            self.assertEqual(app.state.playback_queue.current("local").path, "second.mp3")
+            self.assertEqual(app.state.playback_queue.current("bose").path, "third.mp3")
+            self.assertEqual(app.state.local_player.played_paths, ["second.mp3"])
+
+    def test_both_outputs_finish_and_advance_in_one_monitor_pass(self) -> None:
+        with temp_music_app() as app:
+            queue_tracks = self.queue_tracks()
+            app.state.playback_queue.set_tracks(queue_tracks, "first.mp3", "local")
+            app.state.playback_queue.set_tracks(queue_tracks, "second.mp3", "bose")
+            app.state.local_player = FakeLocalPlayer(
+                state="playing",
+                path=app.state.settings.music_root / "first.mp3",
+                finished=True,
+            )
+            app.state.bose_playback_state = app_owned_bose_state(
+                track_path="second.mp3",
+                track_name="second.mp3",
+                ownership_stream_url=test_stream_url("second.mp3"),
+                confirmed_start_timestamp=time.time() - 4,
+                duration_seconds=1.0,
+            )
+
+            _sync_finished_playback(app)
+
+            self.assertEqual(app.state.playback_queue.current("local").path, "second.mp3")
+            self.assertEqual(app.state.playback_queue.current("bose").path, "third.mp3")
+            self.assertEqual(app.state.local_player.played_paths, ["second.mp3"])
+            self.assertEqual(app.state.bose_client.played_names, ["third.mp3"])
+
+    def test_shared_repeat_replays_each_outputs_own_current_track(self) -> None:
+        with temp_music_app() as app:
+            queue_tracks = self.queue_tracks()
+            app.state.playback_queue.set_tracks(queue_tracks, "first.mp3", "local")
+            app.state.playback_queue.set_tracks(queue_tracks, "second.mp3", "bose")
+            app.state.repeat_track = True
+            app.state.local_player = FakeLocalPlayer(
+                state="playing",
+                path=app.state.settings.music_root / "first.mp3",
+                finished=True,
+            )
+            app.state.bose_playback_state = app_owned_bose_state(
+                track_path="second.mp3",
+                track_name="second.mp3",
+                ownership_stream_url=test_stream_url("second.mp3"),
+                confirmed_start_timestamp=time.time() - 4,
+                duration_seconds=1.0,
+            )
+
+            _sync_finished_playback(app)
+
+            self.assertEqual(app.state.playback_queue.current("local").path, "first.mp3")
+            self.assertEqual(app.state.playback_queue.current("bose").path, "second.mp3")
+            self.assertEqual(app.state.local_player.played_paths, ["first.mp3"])
+            self.assertEqual(app.state.bose_client.played_names, ["second.mp3"])
+
+    def test_remove_current_transitions_both_app_owned_outputs(self) -> None:
+        with temp_music_app() as app:
+            queue_tracks = self.queue_tracks()[:2]
+            app.state.playback_queue.set_tracks(queue_tracks, "first.mp3", "local")
+            app.state.playback_queue.set_tracks(queue_tracks, "first.mp3", "bose")
+            app.state.local_player = FakeLocalPlayer(
+                state="playing",
+                path=app.state.settings.music_root / "first.mp3",
+            )
+            app.state.bose_playback_state = app_owned_bose_state()
+
+            route_endpoint(app, "/api/player/local/queue/remove", "POST")("first.mp3")
+
+            self.assertEqual(app.state.playback_queue.current("local").path, "second.mp3")
+            self.assertEqual(app.state.playback_queue.current("bose").path, "second.mp3")
+            self.assertEqual(app.state.local_player.played_paths, ["second.mp3"])
+            self.assertEqual(app.state.bose_client.played_names, ["second.mp3"])
+
+    def test_clear_queue_stops_both_app_owned_outputs(self) -> None:
+        with temp_music_app() as app:
+            app.state.playback_queue.add_tracks(self.queue_tracks()[:1])
+            app.state.local_player = FakeLocalPlayer(
+                state="playing",
+                path=app.state.settings.music_root / "first.mp3",
+            )
+            app.state.bose_playback_state = app_owned_bose_state()
+
+            status = route_endpoint(app, "/api/player/local/queue/clear", "POST")()
+
+            self.assertEqual(status["queue"], [])
+            self.assertEqual(app.state.local_player.stop_count, 1)
+            self.assertTrue(app.state.bose_client.stopped)
+            self.assertIsNone(app.state.playback_queue.current("local"))
+            self.assertIsNone(app.state.playback_queue.current("bose"))
+
+    def test_clear_and_navigation_do_not_control_external_bose(self) -> None:
+        with temp_music_app() as app:
+            app.state.playback_queue.add_tracks(self.queue_tracks()[:2])
+            app.state.bose_playback_state.externally_active(
+                "External Bose playback",
+                display_name="Radio",
+                source="TUNEIN",
+            )
+
+            route_endpoint(app, "/api/player/bose/next", "POST")()
+            self.assertEqual(app.state.playback_queue.current("bose").path, "first.mp3")
+            self.assertEqual(app.state.bose_client.played_names, [])
+
+            route_endpoint(app, "/api/player/local/queue/clear", "POST")()
+            self.assertFalse(app.state.bose_client.stopped)
+            self.assertTrue(app.state.bose_playback_state.external_playback_active)
+
+
 class BosePresetApiTests(unittest.TestCase):
     def test_preset_endpoint_returns_ordered_public_slots_without_location(self) -> None:
         with temp_music_app() as app:
@@ -1032,16 +1218,18 @@ class BosePresetApiTests(unittest.TestCase):
                     endpoint(preset_id)
                 self.assertEqual(raised.exception.status_code, 400)
 
-    def test_preset_selection_clears_queue_and_app_ownership(self) -> None:
+    def test_preset_selection_preserves_local_playback_queue_and_cursor(self) -> None:
         with temp_music_app() as app:
-            app.state.local_player = FakeLocalPlayer()
-            app.state.playback_queue.set_tracks(
-                [
-                    QueueTrack(path="first.mp3", name="first.mp3"),
-                    QueueTrack(path="second.mp3", name="second.mp3"),
-                ],
-                "first.mp3",
+            app.state.local_player = FakeLocalPlayer(
+                state="playing",
+                path=app.state.settings.music_root / "first.mp3",
             )
+            queue_tracks = [
+                QueueTrack(path="first.mp3", name="first.mp3"),
+                QueueTrack(path="second.mp3", name="second.mp3"),
+            ]
+            app.state.playback_queue.set_tracks(queue_tracks, "first.mp3", "local")
+            app.state.playback_queue.set_tracks(queue_tracks, "second.mp3", "bose")
             app.state.active_output = "bose"
             app.state.bose_playback_state = app_owned_bose_state(
                 confirmed_start_timestamp=time.time() - 2,
@@ -1057,8 +1245,14 @@ class BosePresetApiTests(unittest.TestCase):
             )(3)
 
             self.assertEqual(preset_client.selected_ids, [3])
-            self.assertEqual(app.state.local_player.stop_count, 1)
-            self.assertEqual(status["queue"], [])
+            self.assertEqual(app.state.local_player.stop_count, 0)
+            self.assertEqual(
+                [track["path"] for track in status["queue"]],
+                ["first.mp3", "second.mp3"],
+            )
+            self.assertEqual(app.state.playback_queue.current("local").path, "first.mp3")
+            self.assertIsNone(app.state.playback_queue.current("bose"))
+            self.assertEqual(status["outputs"]["local"]["state"], "playing")
             self.assertIsNone(status["now_playing"])
             self.assertEqual(status["active_output"], "bose")
             self.assertTrue(status["bose"]["external_playback_active"])
@@ -1106,11 +1300,17 @@ class BosePresetApiTests(unittest.TestCase):
             self.assertIn("playback_id=fresh-playback-id", state.ownership_stream_url)
             self.assertNotIn("old-playback-id", state.ownership_stream_url)
 
-    def test_failed_preset_selection_clears_stale_ownership_safely(self) -> None:
+    def test_failed_preset_selection_preserves_queue_and_clears_stale_ownership(self) -> None:
         with temp_music_app() as app:
             app.state.playback_queue.set_tracks(
                 [QueueTrack(path="first.mp3", name="first.mp3")],
                 "first.mp3",
+                "local",
+            )
+            app.state.playback_queue.set_tracks(
+                [QueueTrack(path="first.mp3", name="first.mp3")],
+                "first.mp3",
+                "bose",
             )
             app.state.bose_playback_state = app_owned_bose_state()
             app.state.bose_now_playing_client = FakePresetClient(
@@ -1122,7 +1322,15 @@ class BosePresetApiTests(unittest.TestCase):
 
             self.assertFalse(app.state.bose_playback_state.has_app_ownership_context)
             self.assertFalse(app.state.bose_playback_state.external_playback_active)
-            self.assertEqual(app.state.playback_queue.as_dict()["tracks"], [])
+            self.assertEqual(
+                [
+                    track["path"]
+                    for track in app.state.playback_queue.as_dict("local")["tracks"]
+                ],
+                ["first.mp3"],
+            )
+            self.assertEqual(app.state.playback_queue.current("local").path, "first.mp3")
+            self.assertIsNone(app.state.playback_queue.current("bose"))
             self.assertEqual(app.state.bose_playback_state.state, "stopped")
 
 
@@ -1135,6 +1343,7 @@ class BoseControlApiTests(unittest.TestCase):
                     QueueTrack(path="second.mp3", name="second.mp3"),
                 ],
                 "first.mp3",
+                "bose",
             )
             app.state.active_output = "bose"
             app.state.bose_playback_state = app_owned_bose_state()
@@ -1211,6 +1420,7 @@ class BosePlaybackOwnershipTests(unittest.TestCase):
             app.state.playback_queue.set_tracks(
                 [QueueTrack(path="first.mp3", name="first.mp3")],
                 "first.mp3",
+                "bose",
             )
             app.state.active_output = "bose"
             app.state.bose_playback_state = app_owned_bose_state()
@@ -1394,6 +1604,7 @@ class ExternalBosePlaybackDisplayTests(unittest.TestCase):
             app.state.playback_queue.set_tracks(
                 [QueueTrack(path="first.mp3", name="first.mp3")],
                 "first.mp3",
+                "bose",
             )
             app.state.active_output = "bose"
             app.state.bose_playback_state = app_owned_bose_state()
@@ -1544,6 +1755,7 @@ class BoseStatePollingTests(unittest.TestCase):
                     QueueTrack(path="second.mp3", name="second.mp3"),
                 ],
                 "first.mp3",
+                "bose",
             )
             app.state.active_output = "bose"
             app.state.bose_playback_state = app_owned_bose_state(
@@ -1562,7 +1774,7 @@ class BoseStatePollingTests(unittest.TestCase):
 
             _sync_bose_playback(app)
 
-            self.assertEqual(app.state.playback_queue.current().path, "second.mp3")
+            self.assertEqual(app.state.playback_queue.current("bose").path, "second.mp3")
             self.assertEqual(app.state.bose_client.played_names, ["second.mp3"])
 
     def test_invalid_source_at_auto_advance_boundary_starts_next_track(self) -> None:
@@ -1573,6 +1785,7 @@ class BoseStatePollingTests(unittest.TestCase):
                     QueueTrack(path="second.mp3", name="second.mp3"),
                 ],
                 "first.mp3",
+                "bose",
             )
             app.state.active_output = "bose"
             app.state.bose_playback_state = app_owned_bose_state(
@@ -1591,7 +1804,7 @@ class BoseStatePollingTests(unittest.TestCase):
 
             _sync_bose_playback(app)
 
-            self.assertEqual(app.state.playback_queue.current().path, "second.mp3")
+            self.assertEqual(app.state.playback_queue.current("bose").path, "second.mp3")
             self.assertEqual(app.state.bose_client.played_names, ["second.mp3"])
             self.assertEqual(app.state.bose_playback_state.state, "playing")
             self.assertEqual(app.state.bose_playback_state.status_poll_failures, 0)
@@ -1604,6 +1817,7 @@ class BoseStatePollingTests(unittest.TestCase):
                     QueueTrack(path="second.mp3", name="second.mp3"),
                 ],
                 "first.mp3",
+                "bose",
             )
             app.state.active_output = "bose"
             app.state.bose_playback_state = app_owned_bose_state(
@@ -1622,7 +1836,7 @@ class BoseStatePollingTests(unittest.TestCase):
 
             _sync_bose_playback(app)
 
-            self.assertEqual(app.state.playback_queue.current().path, "second.mp3")
+            self.assertEqual(app.state.playback_queue.current("bose").path, "second.mp3")
             self.assertEqual(app.state.bose_client.played_names, ["second.mp3"])
             self.assertEqual(app.state.bose_playback_state.state, "playing")
 
@@ -1720,18 +1934,19 @@ class BoseStatePollingTests(unittest.TestCase):
 
             self.assertEqual(client.fetch_count, 2)
 
-    def test_bose_polling_does_not_run_for_local_output(self) -> None:
+    def test_app_owned_bose_polling_continues_for_local_active_output(self) -> None:
         with temp_music_app() as app:
             app.state.active_output = "local"
-            app.state.bose_playback_state = BosePlaybackState(state="playing")
+            app.state.bose_playback_state = app_owned_bose_state()
             client = FakeNowPlayingClient(
-                ['<nowPlaying source="LOCAL_INTERNET_RADIO"></nowPlaying>'],
+                [custom_radio_status(test_stream_url("first.mp3"), "First")],
             )
             app.state.bose_now_playing_client = client
 
             _poll_bose_playback_state(app, now_monotonic=10.0)
 
-            self.assertEqual(client.fetch_count, 0)
+            self.assertEqual(client.fetch_count, 1)
+            self.assertTrue(app.state.bose_playback_state.ownership_confirmed)
 
     def test_poll_failure_suspends_bose_auto_advance(self) -> None:
         with temp_music_app() as app:
@@ -1741,6 +1956,7 @@ class BoseStatePollingTests(unittest.TestCase):
                     QueueTrack(path="second.mp3", name="second.mp3"),
                 ],
                 "first.mp3",
+                "bose",
             )
             app.state.active_output = "bose"
             app.state.bose_playback_state = BosePlaybackState(
@@ -1754,7 +1970,7 @@ class BoseStatePollingTests(unittest.TestCase):
 
             _sync_bose_playback(app)
 
-            self.assertEqual(app.state.playback_queue.current().path, "first.mp3")
+            self.assertEqual(app.state.playback_queue.current("bose").path, "first.mp3")
             self.assertEqual(app.state.bose_client.played_names, [])
             self.assertEqual(app.state.bose_playback_state.status_poll_failures, 1)
 
@@ -1768,6 +1984,7 @@ class BoseAutoAdvanceTests(unittest.TestCase):
                     QueueTrack(path="second.mp3", name="second.mp3"),
                 ],
                 "first.mp3",
+                "bose",
             )
             app.state.active_output = "bose"
             app.state.bose_playback_state = app_owned_bose_state(
@@ -1779,7 +1996,7 @@ class BoseAutoAdvanceTests(unittest.TestCase):
 
             _sync_bose_playback(app)
 
-            self.assertEqual(app.state.playback_queue.current().path, "second.mp3")
+            self.assertEqual(app.state.playback_queue.current("bose").path, "second.mp3")
             self.assertEqual(app.state.bose_client.played_names, ["second.mp3"])
 
     @patch("thecakeisapi.main.audio_duration_seconds", return_value=1.0)
@@ -1792,6 +2009,7 @@ class BoseAutoAdvanceTests(unittest.TestCase):
                     QueueTrack(path="third.mp3", name="third.mp3"),
                 ],
                 "first.mp3",
+                "bose",
             )
             app.state.active_output = "bose"
             app.state.bose_playback_state = app_owned_bose_state(
@@ -1810,7 +2028,7 @@ class BoseAutoAdvanceTests(unittest.TestCase):
             )
 
             _sync_bose_playback(app)
-            self.assertEqual(app.state.playback_queue.current().path, "second.mp3")
+            self.assertEqual(app.state.playback_queue.current("bose").path, "second.mp3")
 
             app.state.bose_playback_state.confirmed_start_timestamp = time.time() - 4
             app.state.bose_now_playing_client = FakeNowPlayingClient(
@@ -1824,7 +2042,7 @@ class BoseAutoAdvanceTests(unittest.TestCase):
 
             _sync_bose_playback(app)
 
-            self.assertEqual(app.state.playback_queue.current().path, "third.mp3")
+            self.assertEqual(app.state.playback_queue.current("bose").path, "third.mp3")
             self.assertEqual(app.state.bose_client.played_names, ["second.mp3", "third.mp3"])
 
     def test_unexpired_bad_duration_does_not_restart_current_track(self) -> None:
@@ -1835,6 +2053,7 @@ class BoseAutoAdvanceTests(unittest.TestCase):
                     QueueTrack(path="second.mp3", name="second.mp3"),
                 ],
                 "first.mp3",
+                "bose",
             )
             app.state.active_output = "bose"
             app.state.bose_playback_state = app_owned_bose_state(
@@ -1847,7 +2066,7 @@ class BoseAutoAdvanceTests(unittest.TestCase):
             _sync_bose_playback(app)
             _sync_bose_playback(app)
 
-            self.assertEqual(app.state.playback_queue.current().path, "first.mp3")
+            self.assertEqual(app.state.playback_queue.current("bose").path, "first.mp3")
             self.assertEqual(app.state.bose_client.played_names, [])
 
     @patch("thecakeisapi.main.audio_duration_seconds", return_value=1.0)
@@ -1859,15 +2078,16 @@ class BoseAutoAdvanceTests(unittest.TestCase):
                     QueueTrack(path="second.mp3", name="second.mp3"),
                 ],
                 "first.mp3",
+                "bose",
             )
             app.state.active_output = "bose"
 
-            next_track = app.state.playback_queue.next()
+            next_track = app.state.playback_queue.next("bose")
             _play_bose_track(app, next_track)
-            previous_track = app.state.playback_queue.previous()
+            previous_track = app.state.playback_queue.previous("bose")
             _play_bose_track(app, previous_track)
 
-            self.assertEqual(app.state.playback_queue.current().path, "first.mp3")
+            self.assertEqual(app.state.playback_queue.current("bose").path, "first.mp3")
             self.assertEqual(app.state.bose_client.played_names, ["second.mp3", "first.mp3"])
 
     def test_bose_repeat_replays_current_track(self) -> None:
@@ -1875,6 +2095,7 @@ class BoseAutoAdvanceTests(unittest.TestCase):
             app.state.playback_queue.set_tracks(
                 [QueueTrack(path="first.mp3", name="first.mp3")],
                 "first.mp3",
+                "bose",
             )
             app.state.active_output = "bose"
             app.state.repeat_track = True
@@ -1887,7 +2108,7 @@ class BoseAutoAdvanceTests(unittest.TestCase):
 
             _sync_bose_playback(app)
 
-            self.assertEqual(app.state.playback_queue.current().path, "first.mp3")
+            self.assertEqual(app.state.playback_queue.current("bose").path, "first.mp3")
             self.assertEqual(app.state.bose_client.played_names, ["first.mp3"])
 
     def test_bose_stop_cancels_timer_state(self) -> None:
@@ -1895,6 +2116,7 @@ class BoseAutoAdvanceTests(unittest.TestCase):
             app.state.playback_queue.set_tracks(
                 [QueueTrack(path="first.mp3", name="first.mp3")],
                 "first.mp3",
+                "bose",
             )
             app.state.active_output = "bose"
             app.state.bose_playback_state = app_owned_bose_state(
@@ -1939,6 +2161,7 @@ class BoseAutoAdvanceTests(unittest.TestCase):
             app.state.playback_queue.set_tracks(
                 [QueueTrack(path="first.mp3", name="first.mp3")],
                 "first.mp3",
+                "bose",
             )
             app.state.active_output = "bose"
             app.state.bose_playback_state = app_owned_bose_state(
@@ -1966,6 +2189,7 @@ class BoseAutoAdvanceTests(unittest.TestCase):
             app.state.playback_queue.set_tracks(
                 [QueueTrack(path="first.mp3", name="first.mp3")],
                 "first.mp3",
+                "bose",
             )
             app.state.active_output = "bose"
             app.state.bose_playback_state = app_owned_bose_state(
@@ -2067,6 +2291,7 @@ class FakeLocalPlayer:
         elapsed_seconds: float | None = None,
         duration_seconds: float | None = None,
         paused: bool = False,
+        finished: bool = False,
     ) -> None:
         self.stop_count = 0
         self.played_paths: list[str] = []
@@ -2075,6 +2300,9 @@ class FakeLocalPlayer:
         self.elapsed_seconds = elapsed_seconds
         self.duration_seconds = duration_seconds
         self.paused = paused
+        self.finished = finished
+        self.resume_count = 0
+        self.pause_count = 0
 
     def stop(self):
         self.stop_count += 1
@@ -2083,6 +2311,7 @@ class FakeLocalPlayer:
         self.elapsed_seconds = None
         self.duration_seconds = None
         self.paused = False
+        self.finished = False
         return self.status()
 
     def play(self, audio_path: Path):
@@ -2090,7 +2319,31 @@ class FakeLocalPlayer:
         self.state = "playing"
         self.path = audio_path
         self.paused = False
+        self.finished = False
         return self.status()
+
+    def pause(self):
+        self.pause_count += 1
+        self.state = "paused"
+        self.paused = True
+        return self.status()
+
+    def resume(self):
+        self.resume_count += 1
+        self.state = "playing"
+        self.paused = False
+        return self.status()
+
+    def consume_finished(self) -> bool:
+        if not self.finished:
+            return False
+        self.finished = False
+        self.state = "stopped"
+        self.path = None
+        self.elapsed_seconds = None
+        self.duration_seconds = None
+        self.paused = False
+        return True
 
     def status(self):
         return {

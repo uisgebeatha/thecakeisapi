@@ -32,6 +32,7 @@ const helperNames = [
   "nowPlayingLabel",
   "isPausedPlayback",
   "isActivePlayback",
+  "isQueueTrackCurrent",
   "transportEndpoint",
   "playPauseAction",
 ];
@@ -45,7 +46,22 @@ vm.runInContext(
 const playbackState = {
   active_output: "bose",
   repeat_track: true,
-  queue: [{ path: "Queued.mp3", name: "Queued.mp3", is_current: true }],
+  queue: [
+    {
+      path: "Pi Queue.mp3",
+      name: "Pi Queue.mp3",
+      is_current: false,
+      is_current_local: true,
+      is_current_bose: false,
+    },
+    {
+      path: "Bose Queue.mp3",
+      name: "Bose Queue.mp3",
+      is_current: true,
+      is_current_local: false,
+      is_current_bose: true,
+    },
+  ],
   outputs: {
     local: {
       backend: "mpv",
@@ -117,6 +133,38 @@ test("transport and Play Pause use the selected projection", () => {
     helperContext.playPauseAction(helperContext.playbackView(playbackState, "bose")),
     "pause",
   );
+});
+
+test("queue current state follows the selected output cursor", () => {
+  assert.equal(helperContext.isQueueTrackCurrent(playbackState.queue[0], "local"), true);
+  assert.equal(helperContext.isQueueTrackCurrent(playbackState.queue[0], "bose"), false);
+  assert.equal(helperContext.isQueueTrackCurrent(playbackState.queue[1], "local"), false);
+  assert.equal(helperContext.isQueueTrackCurrent(playbackState.queue[1], "bose"), true);
+});
+
+test("selector initialization prefers an active legacy output then a sole active output", () => {
+  const selected = [];
+  const selectorContext = vm.createContext({
+    outputSelectionInitialized: false,
+    isActivePlayback: helperContext.isActivePlayback,
+    playbackView: helperContext.playbackView,
+    selectOutput(output) { selected.push(output); },
+  });
+  vm.runInContext(
+    `${extractFunction("syncOutputSelector")}\n` +
+      "this.syncOutputSelector = syncOutputSelector;",
+    selectorContext,
+  );
+
+  selectorContext.syncOutputSelector(playbackState);
+  assert.deepEqual(selected, ["bose"]);
+
+  const localOnly = structuredClone(playbackState);
+  localOnly.active_output = "bose";
+  localOnly.outputs.bose.state = "stopped";
+  selectorContext.outputSelectionInitialized = false;
+  selectorContext.syncOutputSelector(localOnly);
+  assert.deepEqual(selected, ["bose", "local"]);
 });
 
 test("selector change renders cached state before requesting refresh", () => {

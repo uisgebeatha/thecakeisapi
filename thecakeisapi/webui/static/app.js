@@ -370,8 +370,15 @@ function syncOutputSelector(playbackState) {
     return;
   }
 
-  if (isActivePlayback(playbackState)) {
-    selectOutput(playbackState.active_output);
+  const localActive = isActivePlayback(playbackView(playbackState, "local"));
+  const boseActive = isActivePlayback(playbackView(playbackState, "bose"));
+  const preferredOutput = playbackState.active_output === "local" ? "local" : "bose";
+  const preferredActive = preferredOutput === "local" ? localActive : boseActive;
+
+  if (preferredActive) {
+    selectOutput(preferredOutput);
+  } else if (localActive !== boseActive) {
+    selectOutput(localActive ? "local" : "bose");
   }
   outputSelectionInitialized = true;
 }
@@ -386,7 +393,7 @@ function renderPlaybackState(playbackState) {
   );
 
   renderTimer(outputState);
-  renderQueue(playbackState.queue || []);
+  renderQueue(playbackState.queue || [], selectedOutput());
   renderActiveOutput(outputState);
   updateTransportButtons(
     outputState,
@@ -470,14 +477,16 @@ function renderTimer(playbackState) {
   }
 }
 
-function renderQueue(queue) {
+function renderQueue(queue, output) {
   queueList.replaceChildren();
   queueStatus.textContent = queue.length ? `${queue.length} tracks queued` : "No tracks queued.";
   clearQueueButton.disabled = queue.length === 0;
 
   for (const track of queue) {
     const item = document.createElement("li");
-    item.className = track.is_current ? "queue-item current" : "queue-item";
+    item.className = isQueueTrackCurrent(track, output)
+      ? "queue-item current"
+      : "queue-item";
 
     const name = document.createElement("span");
     name.className = "queue-name";
@@ -494,6 +503,11 @@ function renderQueue(queue) {
     item.append(name, actions);
     queueList.appendChild(item);
   }
+}
+
+function isQueueTrackCurrent(track, output) {
+  const outputFlag = output === "bose" ? "is_current_bose" : "is_current_local";
+  return track[outputFlag] ?? track.is_current ?? false;
 }
 
 function createQueueButton(label, onClick) {
@@ -518,7 +532,8 @@ function moveQueueTrack(path, direction) {
 function updateTransportButtons(outputState, queue, repeatTrack) {
   const externalBose = isExternalBosePlayback(outputState);
   const hasTrack = Boolean(
-    outputState.now_playing || queue.some((track) => track.is_current),
+    outputState.now_playing ||
+      queue.some((track) => isQueueTrackCurrent(track, selectedOutput())),
   );
   const isPlaying = outputState.state === "playing";
   const isPaused = isPausedPlayback(outputState);

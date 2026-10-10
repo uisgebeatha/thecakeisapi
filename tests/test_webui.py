@@ -50,11 +50,20 @@ class WebUiTransportTests(unittest.TestCase):
     def test_play_button_is_available_for_stopped_bose_queue_item(self) -> None:
         app_js = APP_JS.read_text(encoding="utf-8")
 
+        self.assertIn('output === "bose" ? "is_current_bose" : "is_current_local"', app_js)
+        self.assertIn("queue.some((track) => isQueueTrackCurrent", app_js)
         self.assertIn(
             "playButton.disabled = externalBose || !hasTrack || isStarting;",
             app_js,
         )
         self.assertNotIn("playButton.disabled = !hasTrack || isPlaying", app_js)
+
+    def test_queue_highlighting_uses_the_selected_output_cursor(self) -> None:
+        app_js = APP_JS.read_text(encoding="utf-8")
+
+        self.assertIn("renderQueue(playbackState.queue || [], selectedOutput());", app_js)
+        self.assertIn("function isQueueTrackCurrent(track, output)", app_js)
+        self.assertIn("track[outputFlag] ?? track.is_current ?? false", app_js)
 
     def test_external_bose_metadata_is_rendered_without_queue_ownership(self) -> None:
         app_js = APP_JS.read_text(encoding="utf-8")

@@ -194,7 +194,7 @@
 ## Playback Output Independence
 
 1. [x] Maintain independent Pi-local and Bose playback state, with accurate Now Playing when switching outputs.
-2. [ ] Allow Pi-local and Bose playback to continue independently when starting the other output.
+2. [x] Allow Pi-local and Bose playback to continue independently when starting the other output.
 
 ## Design Investigation
 
