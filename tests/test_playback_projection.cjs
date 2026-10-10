@@ -8,7 +8,9 @@ const appPath = path.join(__dirname, "..", "thecakeisapi", "webui", "static", "a
 const source = fs.readFileSync(appPath, "utf8");
 
 function extractFunction(name) {
-  const start = source.indexOf(`function ${name}(`);
+  const asyncStart = source.indexOf(`async function ${name}(`);
+  const regularStart = source.indexOf(`function ${name}(`);
+  const start = asyncStart >= 0 ? asyncStart : regularStart;
   assert.ok(start >= 0, `${name} is present`);
 
   const bodyStart = source.indexOf("{", start);
@@ -84,6 +86,84 @@ const playbackState = {
     },
   },
 };
+
+function playbackResponse(state) {
+  return {
+    ok: true,
+    async json() {
+      return state;
+    },
+  };
+}
+
+function createSelectorFlow(initialOutput = "bose") {
+  let selectedOutputValue = initialOutput;
+  let selectorSyncCount = 0;
+  let refreshCount = 0;
+  const rendered = [];
+  const selectorContext = vm.createContext({
+    lastPlaybackState: null,
+    outputSelectionInitialized: false,
+    isActivePlayback: helperContext.isActivePlayback,
+    playbackView: helperContext.playbackView,
+    selectOutput(output) {
+      selectedOutputValue = output;
+    },
+    selectedOutput() {
+      return selectedOutputValue;
+    },
+    updateBosePresetsLauncher() {},
+    renderPlaybackState(state) {
+      const outputState = helperContext.playbackView(state, selectedOutputValue);
+      rendered.push({
+        output: selectedOutputValue,
+        title: helperContext.nowPlayingLabel(outputState),
+        state: outputState.state,
+      });
+    },
+    refreshPlaybackStatus() {
+      refreshCount += 1;
+    },
+  });
+  vm.runInContext(
+    [
+      "syncOutputSelector",
+      "handleOutputSelectionChange",
+      "renderPlaybackResponse",
+      "transportOutput",
+      "transportEndpoint",
+    ].map(extractFunction).join("\n") +
+      "\nthis.syncOutputSelector = syncOutputSelector;" +
+      "\nthis.handleOutputSelectionChange = handleOutputSelectionChange;" +
+      "\nthis.renderPlaybackResponse = renderPlaybackResponse;" +
+      "\nthis.transportEndpoint = transportEndpoint;",
+    selectorContext,
+  );
+
+  const initialSync = selectorContext.syncOutputSelector;
+  selectorContext.syncOutputSelector = (state) => {
+    selectorSyncCount += 1;
+    initialSync(state);
+  };
+
+  return {
+    context: selectorContext,
+    rendered,
+    select(output) {
+      selectedOutputValue = output;
+      selectorContext.handleOutputSelectionChange();
+    },
+    selectedOutput() {
+      return selectedOutputValue;
+    },
+    selectorSyncCount() {
+      return selectorSyncCount;
+    },
+    refreshCount() {
+      return refreshCount;
+    },
+  };
+}
 
 test("Pi to Bose to Pi restores each output projection", () => {
   const localView = helperContext.playbackView(playbackState, "local");
@@ -189,6 +269,53 @@ test("selector change renders cached state before requesting refresh", () => {
 
   assert.equal(selectionContext.outputSelectionInitialized, true);
   assert.deepEqual(calls, ["launcher", "render", "refresh"]);
+});
+
+test("explicit local selection survives repeated Bose-active status refreshes", async () => {
+  const flow = createSelectorFlow();
+
+  await flow.context.renderPlaybackResponse(playbackResponse(playbackState), true);
+  assert.equal(flow.selectedOutput(), "bose");
+  assert.deepEqual(flow.rendered.at(-1), {
+    output: "bose",
+    title: "Bose.mp3",
+    state: "playing",
+  });
+
+  flow.select("local");
+  await flow.context.renderPlaybackResponse(playbackResponse(playbackState));
+  await flow.context.renderPlaybackResponse(playbackResponse(playbackState));
+
+  assert.equal(flow.selectedOutput(), "local");
+  assert.equal(flow.selectorSyncCount(), 1);
+  assert.equal(flow.refreshCount(), 1);
+  assert.deepEqual(flow.rendered.slice(-2), [
+    { output: "local", title: "Pi.mp3", state: "paused" },
+    { output: "local", title: "Pi.mp3", state: "paused" },
+  ]);
+  assert.equal(flow.context.transportEndpoint("next"), "/api/player/local/next");
+});
+
+test("explicit Bose selection survives repeated local-active status refreshes", async () => {
+  const localPreferredState = structuredClone(playbackState);
+  localPreferredState.active_output = "local";
+  const flow = createSelectorFlow("local");
+
+  await flow.context.renderPlaybackResponse(playbackResponse(localPreferredState), true);
+  assert.equal(flow.selectedOutput(), "local");
+
+  flow.select("bose");
+  await flow.context.renderPlaybackResponse(playbackResponse(localPreferredState));
+  await flow.context.renderPlaybackResponse(playbackResponse(localPreferredState));
+
+  assert.equal(flow.selectedOutput(), "bose");
+  assert.equal(flow.selectorSyncCount(), 1);
+  assert.deepEqual(flow.rendered.at(-1), {
+    output: "bose",
+    title: "Bose.mp3",
+    state: "playing",
+  });
+  assert.equal(flow.context.transportEndpoint("next"), "/api/player/bose/next");
 });
 
 test("status refresh observes Bose only while Bose is selected", () => {

@@ -71,7 +71,7 @@ async function loadApp() {
     healthBadge.dataset.state = "ok";
     appVersion.textContent = `v${health.version}`;
     await renderBrowseResponse(browseResponse);
-    await renderPlaybackResponse(playbackResponse);
+    await renderPlaybackResponse(playbackResponse, true);
   } catch (error) {
     healthBadge.textContent = "Offline";
     healthBadge.dataset.state = "error";
@@ -353,7 +353,7 @@ function playbackStatusUrl() {
     : "/api/player/status";
 }
 
-async function renderPlaybackResponse(response) {
+async function renderPlaybackResponse(response, initializeOutputSelection = false) {
   if (!response.ok) {
     const error = await response.json();
     throw new Error(error.detail || "Playback request failed");
@@ -361,7 +361,9 @@ async function renderPlaybackResponse(response) {
 
   const playbackState = await response.json();
   lastPlaybackState = playbackState;
-  syncOutputSelector(playbackState);
+  if (initializeOutputSelection) {
+    syncOutputSelector(playbackState);
+  }
   renderPlaybackState(playbackState);
 }
 
@@ -758,7 +760,6 @@ async function activateBosePreset(button) {
     }
 
     lastPlaybackState = data;
-    syncOutputSelector(data);
     renderPlaybackState(data);
     bosePresetsDialog.close();
     refreshPlaybackStatus();
