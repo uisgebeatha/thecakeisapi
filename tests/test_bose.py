@@ -859,6 +859,124 @@ class PlaybackCleanupTests(unittest.TestCase):
             self.assertEqual(local_player.played_paths, ["first.mp3"])
 
 
+class IndependentPlaybackProjectionTests(unittest.TestCase):
+    def test_status_returns_independent_local_and_bose_outputs(self) -> None:
+        with temp_music_app() as app:
+            app.state.local_player = FakeLocalPlayer(
+                state="paused",
+                path=app.state.settings.music_root / "second.mp3",
+                elapsed_seconds=12.5,
+                duration_seconds=90.0,
+                paused=True,
+            )
+            app.state.playback_queue.set_tracks(
+                [QueueTrack(path="first.mp3", name="first.mp3")],
+                "first.mp3",
+            )
+            app.state.active_output = "bose"
+            app.state.bose_playback_state = app_owned_bose_state(
+                track_path="first.mp3",
+                track_name="first.mp3",
+                state="paused",
+                confirmed_start_timestamp=time.time() - 4,
+                paused_elapsed_seconds=22.0,
+                duration_seconds=120.0,
+            )
+
+            status = _playback_status(app)
+
+            self.assertEqual(set(status["outputs"]), {"local", "bose"})
+            self.assertEqual(status["outputs"]["local"]["state"], "paused")
+            self.assertEqual(status["outputs"]["local"]["elapsed_seconds"], 12.5)
+            self.assertEqual(status["outputs"]["local"]["duration_seconds"], 90.0)
+            self.assertTrue(status["outputs"]["local"]["paused"])
+            self.assertEqual(
+                status["outputs"]["local"]["now_playing"],
+                {"path": "second.mp3", "name": "second.mp3"},
+            )
+            self.assertEqual(status["outputs"]["bose"]["state"], "paused")
+            self.assertTrue(status["outputs"]["bose"]["paused"])
+            self.assertEqual(
+                status["outputs"]["bose"]["now_playing"],
+                {"path": "first.mp3", "name": "first.mp3"},
+            )
+            self.assertEqual(status["outputs"]["bose"]["elapsed_seconds"], 22.0)
+            self.assertEqual(status["outputs"]["bose"]["duration_seconds"], 120.0)
+
+    def test_stopped_outputs_do_not_present_queue_track_as_now_playing(self) -> None:
+        with temp_music_app() as app:
+            app.state.local_player = FakeLocalPlayer()
+            app.state.playback_queue.set_tracks(
+                [QueueTrack(path="first.mp3", name="first.mp3")],
+                "first.mp3",
+            )
+            app.state.repeat_track = True
+            app.state.bose_playback_state = BosePlaybackState(
+                track_path="first.mp3",
+                track_name="first.mp3",
+                state="stopped",
+            )
+
+            status = _playback_status(app)
+
+            self.assertIsNone(status["outputs"]["local"]["now_playing"])
+            self.assertIsNone(status["outputs"]["bose"]["now_playing"])
+            self.assertEqual(status["queue"][0]["path"], "first.mp3")
+            self.assertTrue(status["repeat_track"])
+            self.assertEqual(status["now_playing"]["path"], "first.mp3")
+
+    def test_external_bose_metadata_is_confined_to_bose_projection(self) -> None:
+        with temp_music_app() as app:
+            app.state.local_player = FakeLocalPlayer(
+                state="playing",
+                path=app.state.settings.music_root / "second.mp3",
+                elapsed_seconds=8.0,
+                duration_seconds=45.0,
+            )
+            app.state.active_output = "local"
+            app.state.bose_playback_state.externally_active(
+                "Bose playback is active externally",
+                display_name="BBC Radio 2",
+                source="TUNEIN",
+            )
+
+            status = _playback_status(app)
+
+            self.assertEqual(
+                status["outputs"]["local"]["now_playing"]["path"],
+                "second.mp3",
+            )
+            self.assertNotIn("external_playback_active", status["outputs"]["local"])
+            self.assertTrue(status["outputs"]["bose"]["external_playback_active"])
+            self.assertEqual(
+                status["outputs"]["bose"]["now_playing"],
+                {"path": None, "name": "BBC Radio 2"},
+            )
+            self.assertEqual(status["outputs"]["bose"]["external_source"], "TUNEIN")
+
+    def test_observing_owned_bose_while_local_is_active_preserves_ownership(self) -> None:
+        with temp_music_app() as app:
+            app.state.active_output = "local"
+            app.state.bose_playback_state = app_owned_bose_state(
+                confirmed_start_timestamp=time.time() - 2,
+                duration_seconds=30.0,
+            )
+
+            status = route_endpoint(app, "/api/player/status", "GET")(
+                observe_bose=True,
+            )
+
+            self.assertTrue(app.state.bose_playback_state.ownership_confirmed)
+            self.assertFalse(app.state.bose_playback_state.external_playback_active)
+            self.assertEqual(status["outputs"]["bose"]["state"], "playing")
+            self.assertEqual(
+                status["outputs"]["bose"]["now_playing"]["path"],
+                "first.mp3",
+            )
+            self.assertFalse(app.state.bose_client.stopped)
+            self.assertEqual(app.state.bose_client.played_names, [])
+
+
 class BosePresetApiTests(unittest.TestCase):
     def test_preset_endpoint_returns_ordered_public_slots_without_location(self) -> None:
         with temp_music_app() as app:
@@ -1942,26 +2060,47 @@ class FakePresetClient:
 
 
 class FakeLocalPlayer:
-    def __init__(self) -> None:
+    def __init__(
+        self,
+        state: str = "stopped",
+        path: Path | None = None,
+        elapsed_seconds: float | None = None,
+        duration_seconds: float | None = None,
+        paused: bool = False,
+    ) -> None:
         self.stop_count = 0
         self.played_paths: list[str] = []
+        self.state = state
+        self.path = path
+        self.elapsed_seconds = elapsed_seconds
+        self.duration_seconds = duration_seconds
+        self.paused = paused
 
     def stop(self):
         self.stop_count += 1
+        self.state = "stopped"
+        self.path = None
+        self.elapsed_seconds = None
+        self.duration_seconds = None
+        self.paused = False
         return self.status()
 
     def play(self, audio_path: Path):
         self.played_paths.append(audio_path.name)
+        self.state = "playing"
+        self.path = audio_path
+        self.paused = False
         return self.status()
 
     def status(self):
         return {
             "backend": "mpv",
-            "state": "stopped",
+            "state": self.state,
             "process_id": None,
-            "elapsed_seconds": None,
-            "duration_seconds": None,
-            "paused": False,
+            "path": str(self.path) if self.path else None,
+            "elapsed_seconds": self.elapsed_seconds,
+            "duration_seconds": self.duration_seconds,
+            "paused": self.paused,
         }
 
 

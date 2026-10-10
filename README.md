@@ -83,6 +83,8 @@ Raspberry Pi 4
 
 The responsive VLC-style browser keeps the folder library and temporary queue visible side by side on desktop and stacks them cleanly on phone-sized screens. On phones, the app header and current library path remain sticky while directory entries scroll beneath them; the compact Now Playing controls remain fixed at the bottom. Desktop and phone layouts share a single icon-based Previous, Play/Pause, Stop, Next, and Repeat row. Bose SoundTouch is the default choice for new playback; Pi 4 Local remains available in the smaller segmented output switcher. The active output and playback state are shown separately so transport controls remain tied to the backend that is actually playing.
 
+Pi-local and Bose playback state are reported independently. Changing the output selector immediately shows that output's actual track, state, and timer, and transport controls target the selected output. The queue and repeat setting remain shared. A stopped output shows no Now Playing track even when the shared queue still has a track available to resume. Starting playback on one output may still stop the other output.
+
 #### Raspberry Pi Local
 
 * Play

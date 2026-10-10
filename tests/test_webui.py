@@ -36,7 +36,11 @@ class WebUiTransportTests(unittest.TestCase):
         app_js = APP_JS.read_text(encoding="utf-8")
 
         self.assertIn(
-            'const action = lastPlaybackState?.state === "playing" ? "pause" : "resume";',
+            'const selectedState = playbackView(lastPlaybackState, selectedOutput());',
+            app_js,
+        )
+        self.assertIn(
+            "const action = playPauseAction(selectedState);",
             app_js,
         )
         self.assertIn("sendTransportCommand(transportEndpoint(action));", app_js)
@@ -55,9 +59,9 @@ class WebUiTransportTests(unittest.TestCase):
     def test_external_bose_metadata_is_rendered_without_queue_ownership(self) -> None:
         app_js = APP_JS.read_text(encoding="utf-8")
 
-        self.assertIn("function isExternalBosePlayback(playbackState)", app_js)
+        self.assertIn("function isExternalBosePlayback(outputState)", app_js)
         self.assertIn(
-            'playbackState.bose.external_display_name || "Bose"',
+            'outputState.external_display_name || outputState.external_source || "Bose"',
             app_js,
         )
         self.assertIn('activeOutput.textContent = "Bose · External";', app_js)
@@ -66,8 +70,9 @@ class WebUiTransportTests(unittest.TestCase):
     def test_external_bose_transport_controls_remain_disabled(self) -> None:
         app_js = APP_JS.read_text(encoding="utf-8")
 
+        self.assertIn("stopButton.disabled =", app_js)
         self.assertIn(
-            'stopButton.disabled = externalBose || !hasTrack || playbackState.state === "stopped";',
+            'externalBose || !outputState.now_playing || outputState.state === "stopped";',
             app_js,
         )
         self.assertIn("previousButton.disabled = externalBose || !hasTrack;", app_js)
@@ -171,7 +176,7 @@ class WebUiTransportTests(unittest.TestCase):
         self.assertIn('aria-label="Repeat track off"', index_html)
         self.assertIn('aria-pressed="false"', index_html)
         self.assertIn(
-            'repeatButton.dataset.active = playbackState.repeat_track ? "true" : "false";',
+            'repeatButton.dataset.active = repeatTrack ? "true" : "false";',
             app_js,
         )
         self.assertIn('repeatButton.setAttribute("aria-pressed"', app_js)
@@ -205,12 +210,15 @@ class WebUiTransportTests(unittest.TestCase):
             app_js,
         )
 
-    def test_transport_controls_target_the_active_output(self) -> None:
+    def test_transport_controls_target_the_selected_output(self) -> None:
         app_js = APP_JS.read_text(encoding="utf-8")
 
         self.assertIn("function transportOutput()", app_js)
-        self.assertIn("? lastPlaybackState.active_output", app_js)
-        self.assertIn("const output = transportOutput();", app_js)
+        self.assertIn("return selectedOutput();", app_js)
+        self.assertIn(
+            "function transportEndpoint(action, output = transportOutput())",
+            app_js,
+        )
 
     def test_ui_has_dedicated_version_and_active_output_indicators(self) -> None:
         index_html = INDEX_HTML.read_text(encoding="utf-8")
@@ -257,7 +265,7 @@ class WebUiTransportTests(unittest.TestCase):
         app_js = APP_JS.read_text(encoding="utf-8")
         styles_css = STYLES_CSS.read_text(encoding="utf-8")
 
-        self.assertIn('__version__ = "0.4.6"', package_init)
+        self.assertIn('__version__ = "0.4.9"', package_init)
         self.assertIn("version=__version__", main_py)
         self.assertIn('"version": __version__', main_py)
         self.assertNotIn("0.4.0", index_html)
@@ -651,9 +659,9 @@ class WebUiBosePresetTests(unittest.TestCase):
         self.assertIn("<span>Now Playing</span>", index_html)
         self.assertNotIn("Current Bose item", index_html)
         self.assertIn('id="bose-current-item-title"', index_html)
-        self.assertIn("playbackState?.bose?.external_playback_active", app_js)
+        self.assertIn("boseState?.external_playback_active", app_js)
         self.assertIn(
-            'return playbackState.bose.external_display_name || "External Bose playback";',
+            'return boseState.external_display_name || "External Bose playback";',
             app_js,
         )
         self.assertIn(

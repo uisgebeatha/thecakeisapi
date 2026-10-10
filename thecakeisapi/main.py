@@ -918,9 +918,12 @@ def _poll_bose_playback_state(
 ) -> bool:
     """Return whether an expected app-initiated transition gap was observed."""
     playback_state = app.state.bose_playback_state
-    if app.state.active_output != "bose":
-        return False
     if playback_state.state not in {"starting", "playing", "paused"}:
+        return False
+    if (
+        app.state.active_output != "bose"
+        and not playback_state.has_app_ownership_context
+    ):
         return False
     if app.state.bose_now_playing_client is None:
         return False
@@ -1020,6 +1023,12 @@ def _observe_external_bose_playback(
     if app.state.bose_now_playing_client is None:
         return
     if (
+        playback_state.has_app_ownership_context
+        and playback_state.state in {"starting", "playing", "paused"}
+    ):
+        _poll_bose_playback_state(app, now_monotonic=now_monotonic)
+        return
+    if (
         app.state.active_output == "bose"
         and playback_state.state in {"starting", "playing", "paused"}
     ):
@@ -1071,7 +1080,14 @@ def _record_bose_status_poll_failure(app: FastAPI, reason: str) -> None:
 
 
 def _playback_status(app: FastAPI) -> dict[str, object]:
-    player_status = _active_player_status(app)
+    output_statuses = {
+        "local": _local_output_status(app),
+        "bose": _bose_output_status(app),
+    }
+    player_status = output_statuses.get(
+        app.state.active_output,
+        output_statuses["local"],
+    )
     queue_status = app.state.playback_queue.as_dict()
     current_track = app.state.playback_queue.current()
     if (
@@ -1097,6 +1113,7 @@ def _playback_status(app: FastAPI) -> dict[str, object]:
         if current_track
         else None,
         "queue": queue_status["tracks"],
+        "outputs": output_statuses,
         "bose": {
             "speaker_ip": app.state.settings.bose_speaker_ip,
             "api_port": app.state.settings.bose_api_port,
@@ -1132,16 +1149,113 @@ def _playback_status(app: FastAPI) -> dict[str, object]:
 
 def _active_player_status(app: FastAPI) -> dict[str, object]:
     if app.state.active_output == "bose":
-        return {
-            "backend": "bose_aftertouch",
-            "state": app.state.bose_playback_state.state,
-            "process_id": None,
-            "elapsed_seconds": app.state.bose_playback_state.elapsed_seconds(),
-            "duration_seconds": app.state.bose_playback_state.duration_seconds,
-            "paused": app.state.bose_playback_state.state == "paused",
+        return _bose_output_status(app)
+
+    return _local_output_status(app)
+
+
+def _local_output_status(app: FastAPI) -> dict[str, object]:
+    player_status = app.state.local_player.status()
+    state = str(player_status["state"])
+    now_playing = None
+    current_path = player_status.get("path")
+    if state in {"playing", "paused"} and current_path:
+        media_path = Path(str(current_path))
+        try:
+            relative_path = media_path.resolve().relative_to(
+                app.state.settings.music_root.resolve(),
+            )
+        except (OSError, ValueError):
+            relative_path = None
+
+        if relative_path is not None:
+            now_playing = {
+                "path": relative_path.as_posix(),
+                "name": media_path.name,
+            }
+
+    return {
+        "backend": player_status["backend"],
+        "state": state,
+        "process_id": player_status["process_id"],
+        "elapsed_seconds": player_status["elapsed_seconds"],
+        "duration_seconds": player_status["duration_seconds"],
+        "paused": player_status["paused"],
+        "now_playing": now_playing,
+        "message": _output_playback_message(app, "local", state),
+    }
+
+
+def _bose_output_status(app: FastAPI) -> dict[str, object]:
+    playback_state = app.state.bose_playback_state
+    now_playing = None
+    if playback_state.external_playback_active:
+        external_name = (
+            playback_state.external_display_name
+            or playback_state.external_source
+            or "Bose"
+        )
+        now_playing = {
+            "path": None,
+            "name": external_name,
+        }
+    elif playback_state.state in {"starting", "playing", "paused"} and (
+        playback_state.track_path or playback_state.track_name
+    ):
+        now_playing = {
+            "path": playback_state.track_path,
+            "name": playback_state.track_name
+            or Path(playback_state.track_path or "").name,
         }
 
-    return app.state.local_player.status()
+    return {
+        "backend": "bose_aftertouch",
+        "state": playback_state.state,
+        "process_id": None,
+        "elapsed_seconds": playback_state.elapsed_seconds(),
+        "duration_seconds": playback_state.duration_seconds,
+        "paused": playback_state.state == "paused",
+        "now_playing": now_playing,
+        "message": _output_playback_message(
+            app,
+            "bose",
+            playback_state.state,
+            external_playback_active=playback_state.external_playback_active,
+        ),
+        "external_playback_active": playback_state.external_playback_active,
+        "external_display_name": playback_state.external_display_name,
+        "external_source": playback_state.external_source,
+    }
+
+
+def _output_playback_message(
+    app: FastAPI,
+    output: str,
+    state: str,
+    external_playback_active: bool = False,
+) -> str:
+    if external_playback_active:
+        return "External Bose playback"
+
+    if output == "bose":
+        state_messages = {
+            "starting": (
+                f"Starting on Bose: {app.state.bose_playback_state.track_name}"
+            ),
+            "playing": (
+                f"Playing on Bose: {app.state.bose_playback_state.track_name}"
+            ),
+            "paused": "Paused Bose playback",
+            "ended": "End of queue",
+            "error": app.state.bose_playback_state.warning or "Bose playback error",
+        }
+        return state_messages.get(state, "Stopped Bose playback")
+
+    state_messages = {
+        "playing": "Playing on Pi",
+        "paused": "Paused",
+    }
+    return state_messages.get(state, "Stopped")
 
 
 def _fetch_bose_now_playing(app: FastAPI):

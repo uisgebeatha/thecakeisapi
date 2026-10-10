@@ -377,63 +377,75 @@ function syncOutputSelector(playbackState) {
 }
 
 function renderPlaybackState(playbackState) {
-  const nowPlaying = playbackState.now_playing;
-  const externalBose = isExternalBosePlayback(playbackState);
-  nowPlayingTitle.textContent = externalBose
-    ? playbackState.bose.external_display_name || "Bose"
-    : nowPlaying
-      ? nowPlaying.name
-      : "Nothing playing";
-  playbackStatus.textContent = playbackMessage(playbackState);
+  const outputState = playbackView(playbackState, selectedOutput());
+  const externalBose = isExternalBosePlayback(outputState);
+  nowPlayingTitle.textContent = nowPlayingLabel(outputState);
+  playbackStatus.textContent = playbackMessage(outputState);
   playbackStatus.dataset.state = (
-    playbackState.state === "stopped" && !externalBose ? "" : "ok"
+    outputState.state === "stopped" && !externalBose ? "" : "ok"
   );
 
-  renderTimer(playbackState);
+  renderTimer(outputState);
   renderQueue(playbackState.queue || []);
-  renderActiveOutput(playbackState);
-  updateTransportButtons(playbackState);
+  renderActiveOutput(outputState);
+  updateTransportButtons(
+    outputState,
+    playbackState.queue || [],
+    playbackState.repeat_track,
+  );
   updateBosePresetsLauncher();
   boseCurrentItemTitle.textContent = currentBoseItemTitle(playbackState);
 }
 
-function renderActiveOutput(playbackState) {
-  if (isExternalBosePlayback(playbackState)) {
+function playbackView(playbackState, output) {
+  const outputState = playbackState?.outputs?.[output];
+  return outputState || playbackState || {};
+}
+
+function nowPlayingLabel(outputState) {
+  if (outputState?.external_playback_active) {
+    return outputState.external_display_name || outputState.external_source || "Bose";
+  }
+  return outputState?.now_playing?.name || "Nothing playing";
+}
+
+function renderActiveOutput(outputState) {
+  if (isExternalBosePlayback(outputState)) {
     activeOutput.textContent = "Bose · External";
     activeOutput.dataset.state = "external";
     return;
   }
 
-  if (!isActivePlayback(playbackState)) {
+  if (!isActivePlayback(outputState)) {
     activeOutput.textContent = "No active output";
     activeOutput.dataset.state = "idle";
     return;
   }
 
-  const outputName = playbackState.active_output === "bose" ? "Bose" : "Pi 4 Local";
+  const outputName = selectedOutput() === "bose" ? "Bose" : "Pi 4 Local";
   const stateName = {
     paused: "Paused",
     playing: "Playing",
     starting: "Starting",
-  }[playbackState.state];
+  }[outputState.state];
   activeOutput.textContent = `${outputName} · ${stateName}`;
-  activeOutput.dataset.state = playbackState.state;
+  activeOutput.dataset.state = outputState.state;
 }
 
-function playbackMessage(playbackState) {
-  if (isExternalBosePlayback(playbackState)) {
+function playbackMessage(outputState) {
+  if (isExternalBosePlayback(outputState)) {
     return "External Bose playback";
   }
 
-  if (playbackState.message) {
-    return playbackState.message;
+  if (outputState.message) {
+    return outputState.message;
   }
 
-  if (playbackState.state === "playing") {
-    return "Playing on Pi";
+  if (outputState.state === "playing") {
+    return selectedOutput() === "bose" ? "Playing on Bose" : "Playing on Pi";
   }
 
-  if (playbackState.state === "paused") {
+  if (outputState.state === "paused") {
     return "Paused";
   }
 
@@ -503,25 +515,28 @@ function moveQueueTrack(path, direction) {
   sendTransportCommand(`/api/player/local/queue/${direction}?${params.toString()}`);
 }
 
-function updateTransportButtons(playbackState) {
-  const externalBose = isExternalBosePlayback(playbackState);
-  const hasTrack = Boolean(playbackState.now_playing);
-  const isPlaying = playbackState.state === "playing";
-  const isPaused = isPausedPlayback(playbackState);
-  const isStarting = playbackState.state === "starting";
+function updateTransportButtons(outputState, queue, repeatTrack) {
+  const externalBose = isExternalBosePlayback(outputState);
+  const hasTrack = Boolean(
+    outputState.now_playing || queue.some((track) => track.is_current),
+  );
+  const isPlaying = outputState.state === "playing";
+  const isPaused = isPausedPlayback(outputState);
+  const isStarting = outputState.state === "starting";
   const playPauseLabel = isPlaying ? "Pause" : isPaused ? "Resume" : "Play";
-  const repeatLabel = playbackState.repeat_track ? "Repeat track on" : "Repeat track off";
+  const repeatLabel = repeatTrack ? "Repeat track on" : "Repeat track off";
 
   playButton.disabled = externalBose || !hasTrack || isStarting;
   playButton.dataset.controlState = isPlaying ? "pause" : "play";
   playButton.setAttribute("aria-label", playPauseLabel);
   playButton.title = playPauseLabel;
-  stopButton.disabled = externalBose || !hasTrack || playbackState.state === "stopped";
+  stopButton.disabled =
+    externalBose || !outputState.now_playing || outputState.state === "stopped";
   previousButton.disabled = externalBose || !hasTrack;
   nextButton.disabled = externalBose || !hasTrack;
   repeatButton.disabled = externalBose;
-  repeatButton.dataset.active = playbackState.repeat_track ? "true" : "false";
-  repeatButton.setAttribute("aria-pressed", playbackState.repeat_track ? "true" : "false");
+  repeatButton.dataset.active = repeatTrack ? "true" : "false";
+  repeatButton.setAttribute("aria-pressed", repeatTrack ? "true" : "false");
   repeatButton.setAttribute("aria-label", repeatLabel);
   repeatButton.title = repeatLabel;
 }
@@ -531,15 +546,12 @@ function isPausedPlayback(playbackState) {
 }
 
 function isActivePlayback(playbackState) {
-  return Boolean(
-    playbackState?.active_output &&
-      ["starting", "playing", "paused"].includes(playbackState.state),
-  );
+  return Boolean(["starting", "playing", "paused"].includes(playbackState?.state));
 }
 
-function isExternalBosePlayback(playbackState) {
+function isExternalBosePlayback(outputState) {
   return Boolean(
-    selectedOutput() === "bose" && playbackState?.bose?.external_playback_active,
+    selectedOutput() === "bose" && outputState?.external_playback_active,
   );
 }
 
@@ -547,12 +559,22 @@ function updateBosePresetsLauncher() {
   bosePresetsButton.hidden = selectedOutput() !== "bose";
 }
 
-function currentBoseItemTitle(playbackState = lastPlaybackState) {
-  if (playbackState?.bose?.external_playback_active) {
-    return playbackState.bose.external_display_name || "External Bose playback";
+function handleOutputSelectionChange() {
+  outputSelectionInitialized = true;
+  updateBosePresetsLauncher();
+  if (lastPlaybackState !== null) {
+    renderPlaybackState(lastPlaybackState);
   }
-  if (playbackState?.active_output === "bose" && playbackState.now_playing?.name) {
-    return playbackState.now_playing.name;
+  refreshPlaybackStatus();
+}
+
+function currentBoseItemTitle(playbackState = lastPlaybackState) {
+  const boseState = playbackView(playbackState, "bose");
+  if (boseState?.external_playback_active) {
+    return boseState.external_display_name || "External Bose playback";
+  }
+  if (boseState?.now_playing?.name) {
+    return boseState.now_playing.name;
   }
   return "No current Bose item";
 }
@@ -570,9 +592,7 @@ function selectedOutput() {
 }
 
 function transportOutput() {
-  return isActivePlayback(lastPlaybackState)
-    ? lastPlaybackState.active_output
-    : selectedOutput();
+  return selectedOutput();
 }
 
 function outputLabel() {
@@ -583,12 +603,15 @@ function playEndpoint() {
   return PLAY_ENDPOINTS[selectedOutput()];
 }
 
-function transportEndpoint(action) {
-  const output = transportOutput();
+function transportEndpoint(action, output = transportOutput()) {
   if (output === "bose") {
     return `/api/player/bose/${action}`;
   }
   return `/api/player/local/${action}`;
+}
+
+function playPauseAction(outputState) {
+  return outputState?.state === "playing" ? "pause" : "resume";
 }
 
 function navigateTo(path) {
@@ -663,6 +686,7 @@ async function loadBosePresets() {
 function renderBosePresets(presets) {
   const presetsById = new Map(presets.map((preset) => [Number(preset.id), preset]));
   const currentTitle = currentBoseItemTitle().trim().toLocaleLowerCase();
+  const boseState = playbackView(lastPlaybackState, "bose");
 
   for (const button of bosePresetButtons) {
     const presetId = Number(button.dataset.presetId);
@@ -673,7 +697,7 @@ function renderBosePresets(presets) {
       : "Not assigned";
     const active = Boolean(
       available &&
-        lastPlaybackState?.bose?.external_playback_active &&
+        boseState?.external_playback_active &&
         displayName.trim().toLocaleLowerCase() === currentTitle,
     );
 
@@ -739,9 +763,9 @@ function setBosePresetButtonsBusy(busy) {
 }
 
 function bosePowerConfirmationMessage() {
+  const boseState = playbackView(lastPlaybackState, "bose");
   const knownActivePlayback = Boolean(
-    lastPlaybackState?.bose?.external_playback_active ||
-      (lastPlaybackState?.active_output === "bose" && isActivePlayback(lastPlaybackState)),
+    boseState?.external_playback_active || isActivePlayback(boseState),
   );
   return knownActivePlayback ? "Turn Bose off?" : "Toggle Bose power?";
 }
@@ -1012,7 +1036,8 @@ previousButton.addEventListener("click", () => {
 });
 
 playButton.addEventListener("click", () => {
-  const action = lastPlaybackState?.state === "playing" ? "pause" : "resume";
+  const selectedState = playbackView(lastPlaybackState, selectedOutput());
+  const action = playPauseAction(selectedState);
   sendTransportCommand(transportEndpoint(action));
 });
 
@@ -1046,11 +1071,7 @@ trackProgress.addEventListener("change", () => {
   }
 });
 
-outputSelector.addEventListener("change", () => {
-  outputSelectionInitialized = true;
-  updateBosePresetsLauncher();
-  refreshPlaybackStatus();
-});
+outputSelector.addEventListener("change", handleOutputSelectionChange);
 
 bosePresetsButton.addEventListener("click", openBosePresets);
 bosePowerButton.addEventListener("click", toggleBosePower);

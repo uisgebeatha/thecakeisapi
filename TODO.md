@@ -191,6 +191,11 @@
 - [ ] Add library search.
 - [ ] Investigate USB enclosure disconnect behavior.
 
+## Playback Output Independence
+
+1. [x] Maintain independent Pi-local and Bose playback state, with accurate Now Playing when switching outputs.
+2. [ ] Allow Pi-local and Bose playback to continue independently when starting the other output.
+
 ## Design Investigation
 
 ### Native Bose UPnP / DLNA Playback
