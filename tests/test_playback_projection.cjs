@@ -126,6 +126,7 @@ function createSelectorFlow(initialOutput = "bose") {
     selectedOutput() {
       return selectedOutputValue;
     },
+    updateRadioPresetsLauncher() {},
     updateBosePresetsLauncher() {},
     renderPlaybackState(state) {
       const outputState = helperContext.playbackView(state, selectedOutputValue);
@@ -358,6 +359,7 @@ test("selector change renders cached state before requesting refresh", () => {
   const selectionContext = vm.createContext({
     lastPlaybackState: playbackState,
     outputSelectionInitialized: false,
+    updateRadioPresetsLauncher() { calls.push("radio-launcher"); },
     updateBosePresetsLauncher() { calls.push("launcher"); },
     renderPlaybackState(state) {
       assert.equal(state, playbackState);
@@ -374,7 +376,7 @@ test("selector change renders cached state before requesting refresh", () => {
   selectionContext.handleOutputSelectionChange();
 
   assert.equal(selectionContext.outputSelectionInitialized, true);
-  assert.deepEqual(calls, ["launcher", "render", "refresh"]);
+  assert.deepEqual(calls, ["radio-launcher", "launcher", "render", "refresh"]);
 });
 
 test("explicit local selection survives repeated Bose-active status refreshes", async () => {

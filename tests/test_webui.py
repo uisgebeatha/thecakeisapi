@@ -128,7 +128,7 @@ class WebUiTransportTests(unittest.TestCase):
         self.assertEqual(app_js.count("fetch(playbackStatusUrl())"), 2)
         self.assertIn("refreshPlaybackStatus();", app_js)
         self.assertIn(
-            "/static/app.js?v=__THECAKEISAPI_VERSION__&state=quiet-bose-controls",
+            "/static/app.js?v=__THECAKEISAPI_VERSION__&state=radio-presets",
             index_html,
         )
 
@@ -550,6 +550,87 @@ class WebUiTransportTests(unittest.TestCase):
         )
 
 
+class WebUiRadioPresetTests(unittest.TestCase):
+    def test_launcher_is_pi_only_and_separate_from_bose_presets(self) -> None:
+        index_html = INDEX_HTML.read_text(encoding="utf-8")
+        app_js = APP_JS.read_text(encoding="utf-8")
+
+        self.assertIn('id="radio-presets-button"', index_html)
+        self.assertIn('aria-label="Radio Presets"', index_html)
+        self.assertIn('id="radio-presets-dialog"', index_html)
+        self.assertIn('id="bose-presets-dialog"', index_html)
+        self.assertIn(
+            'radioPresetsButton.hidden = selectedOutput() !== "local";',
+            app_js,
+        )
+        self.assertIn(
+            'bosePresetsButton.hidden = selectedOutput() !== "bose";',
+            app_js,
+        )
+        self.assertIn("updateRadioPresetsLauncher();", app_js)
+        self.assertNotIn("selectOutput(\"local\")", app_js)
+
+    def test_dialog_has_complete_management_controls(self) -> None:
+        index_html = INDEX_HTML.read_text(encoding="utf-8")
+        dialog_html = index_html.split(
+            '<dialog id="radio-presets-dialog"',
+            1,
+        )[1].split("</dialog>", 1)[0]
+
+        self.assertIn('id="radio-presets-list"', dialog_html)
+        self.assertIn('id="radio-preset-add-button"', dialog_html)
+        self.assertIn('id="radio-preset-form"', dialog_html)
+        self.assertIn('name="name"', dialog_html)
+        self.assertIn('name="url"', dialog_html)
+        self.assertIn('id="radio-preset-save-button"', dialog_html)
+        self.assertIn('id="radio-preset-cancel-button"', dialog_html)
+
+    def test_list_uses_safe_text_rendering_and_boundary_buttons(self) -> None:
+        app_js = APP_JS.read_text(encoding="utf-8")
+
+        self.assertIn("name.textContent = preset.name;", app_js)
+        self.assertIn("url.textContent = preset.url;", app_js)
+        self.assertNotIn("innerHTML", app_js)
+        self.assertIn('createRadioPresetButton("Play"', app_js)
+        self.assertIn('createRadioPresetButton("Edit"', app_js)
+        self.assertIn('createRadioPresetButton("Delete"', app_js)
+        self.assertIn('createRadioPresetButton("Up"', app_js)
+        self.assertIn('createRadioPresetButton("Down"', app_js)
+        self.assertIn("index === 0", app_js)
+        self.assertIn("index === radioPresets.length - 1", app_js)
+
+    def test_crud_reorder_and_play_use_dedicated_preset_endpoints(self) -> None:
+        app_js = APP_JS.read_text(encoding="utf-8")
+
+        self.assertIn('fetch("/api/player/local/radio/presets")', app_js)
+        self.assertIn('method: presetId ? "PUT" : "POST"', app_js)
+        self.assertIn('{ method: "DELETE" }', app_js)
+        self.assertIn('fetch("/api/player/local/radio/presets/order", {', app_js)
+        self.assertIn(
+            'preset_ids: radioPresets.map((preset) => preset.id),',
+            app_js,
+        )
+        self.assertIn(
+            '`/api/player/local/radio/presets/${encodeURIComponent(preset.id)}/play`',
+            app_js,
+        )
+        self.assertIn('{ method: "POST" }', app_js)
+
+    def test_dialog_layout_is_scrollable_and_mobile_safe(self) -> None:
+        styles_css = STYLES_CSS.read_text(encoding="utf-8")
+        mobile_rules = styles_css.split("@media (max-width: 760px)", 1)[1]
+        mobile_rules = mobile_rules.split("@media (max-width: 420px)", 1)[0]
+
+        self.assertRegex(
+            styles_css,
+            r"\.radio-presets-dialog\s*\{[^}]*max-height:[^}]*overflow: auto;",
+        )
+        self.assertIn(".radio-preset-actions,", styles_css)
+        self.assertIn("flex-wrap: wrap;", styles_css)
+        self.assertIn(".radio-preset-item {", mobile_rules)
+        self.assertIn("grid-template-columns: minmax(0, 1fr);", mobile_rules)
+
+
 class WebUiBosePresetTests(unittest.TestCase):
     def test_bose_only_launcher_is_next_to_settings_with_accessible_svg(self) -> None:
         index_html = INDEX_HTML.read_text(encoding="utf-8")
@@ -561,7 +642,7 @@ class WebUiBosePresetTests(unittest.TestCase):
         self.assertIn('aria-label="Bose Presets"', index_html)
         self.assertIn('<svg class="topbar-button-icon"', index_html)
         self.assertIn(
-            "/static/styles.css?v=__THECAKEISAPI_VERSION__&state=bose-controls",
+            "/static/styles.css?v=__THECAKEISAPI_VERSION__&state=radio-presets",
             index_html,
         )
         self.assertIn(

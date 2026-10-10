@@ -4,6 +4,7 @@ A lightweight self-hosted music player for Raspberry Pi with support for:
 
 * Local playback on a Raspberry Pi using mpv
 * Pi-local internet-radio playback through mpv
+* Pi-managed internet-radio presets
 * Bose SoundTouch playback through AfterTouch
 * Browser-based music library navigation
 * Queue management
@@ -96,6 +97,7 @@ Pi-local and Bose playback state are reported independently. Changing the output
 * Seeking
 * Progress display
 * API-started HTTP/HTTPS internet radio
+* Persistent Pi-local radio presets
 
 Internet radio is a transient Pi-local source outside the file queue. Start it with:
 
@@ -106,6 +108,12 @@ curl -X POST http://<pi-address>:8000/api/player/local/radio/play \
 ```
 
 Starting radio preserves the shared file queue and both output cursors and does not affect Bose playback. Live radio supports Stop in this first implementation; Pause, seek, Previous, Next, and Repeat are unavailable. Stopping radio returns Pi-local controls to the preserved file queue, so the next Play resumes the selected library file rather than restarting the stream. Unexpected stream termination is reported without advancing the file queue or retrying automatically.
+
+When Pi 4 Local is selected, the header Radio Presets launcher provides persistent presets managed by TheCakeIsAPI. Each preset stores a display name and HTTP/HTTPS stream URL and can be played, added, edited, deleted, or reordered with Up and Down controls. Changes are persisted immediately and do not require an application restart.
+
+Preset playback reuses the same transient Pi-local radio path. It replaces only the current Pi mpv source, preserves the file queue and both queue cursors, and leaves Bose playback untouched. Editing or deleting a preset that is currently playing affects future launches only: the current stream and its Now Playing name continue unchanged. A failed stream remains stored for later editing or deletion.
+
+Pi-managed presets are separate from the Bose speaker's six physical preset slots. The Radio Presets launcher is shown only for Pi 4 Local, while the existing Bose Presets popup remains Bose-only.
 
 #### Bose SoundTouch
 
@@ -167,6 +175,8 @@ Example:
 `aftertouch_base_url` may point to AfterTouch running on another device, such as a Pi Zero, or locally in Docker on the Pi 4. The Bose speaker must be able to reach the configured address and port.
 
 `soundtouch_cli_command` may be a command available in `PATH`, such as `soundtouch-cli`, or a full executable path.
+
+Pi-managed radio presets are stored in `radio_presets.json` beside the effective `config.json`. With the standard service layout this is `/home/controller/thecakeisapi/radio_presets.json`; if `THECAKEISAPI_CONFIG` points to another location, the preset file follows that configuration file's directory. The file is created on the first preset change, uses atomic replacement, and remains uncommitted. It is deliberately not stored under removable `/mnt/music` storage.
 
 Open Settings from the gear button in the application header. The dialog can edit the Bose speaker address, AfterTouch base URL, `soundtouch-cli` command/path, public audio base URL, and Bose status polling interval. Saves use an atomic replacement of `config.json` and preserve every unrelated configuration value.
 
@@ -281,7 +291,7 @@ sudo systemctl stop thecakeisapi.service
 ```
 
 The service expects `config.json` to exist locally in `/home/controller/thecakeisapi`.
-That file should remain uncommitted. The `controller` user must be able to read `/mnt/music`, run `mpv`, and run `soundtouch-cli`.
+That file and `radio_presets.json` should remain uncommitted. The `controller` user must be able to write the directory containing both files, read `/mnt/music`, run `mpv`, and run `soundtouch-cli`.
 
 Do not add a hard `RequiresMountsFor=/mnt/music` dependency to this service. The music library is removable USB storage, and testing showed that systemd will deliberately stop TheCakeIsAPI if the SSD briefly disconnects. The web application should remain available so the library can recover after the drive returns.
 

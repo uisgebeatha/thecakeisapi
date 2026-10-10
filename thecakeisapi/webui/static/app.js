@@ -20,6 +20,16 @@ const playButton = document.querySelector("#play-button");
 const stopButton = document.querySelector("#stop-button");
 const nextButton = document.querySelector("#next-button");
 const repeatButton = document.querySelector("#repeat-button");
+const radioPresetsButton = document.querySelector("#radio-presets-button");
+const radioPresetsDialog = document.querySelector("#radio-presets-dialog");
+const radioPresetsCloseButton = document.querySelector("#radio-presets-close-button");
+const radioPresetsMessage = document.querySelector("#radio-presets-message");
+const radioPresetsList = document.querySelector("#radio-presets-list");
+const radioPresetAddButton = document.querySelector("#radio-preset-add-button");
+const radioPresetForm = document.querySelector("#radio-preset-form");
+const radioPresetFormHeading = document.querySelector("#radio-preset-form-heading");
+const radioPresetSaveButton = document.querySelector("#radio-preset-save-button");
+const radioPresetCancelButton = document.querySelector("#radio-preset-cancel-button");
 const bosePresetsButton = document.querySelector("#bose-presets-button");
 const bosePresetsDialog = document.querySelector("#bose-presets-dialog");
 const bosePresetsMessage = document.querySelector("#bose-presets-message");
@@ -44,6 +54,9 @@ let lastPlaybackState = null;
 let outputSelectionInitialized = false;
 let presetActivationInProgress = false;
 let boseControlInProgress = false;
+let radioPresets = [];
+let editingRadioPresetId = null;
+let radioPresetRequestInProgress = false;
 
 const PLAY_ENDPOINTS = Object.freeze({
   bose: "/api/player/bose/play",
@@ -402,6 +415,7 @@ function renderPlaybackState(playbackState) {
     playbackState.queue || [],
     playbackState.repeat_track,
   );
+  updateRadioPresetsLauncher();
   updateBosePresetsLauncher();
   boseCurrentItemTitle.textContent = currentBoseItemTitle(playbackState);
 }
@@ -606,8 +620,13 @@ function updateBosePresetsLauncher() {
   bosePresetsButton.hidden = selectedOutput() !== "bose";
 }
 
+function updateRadioPresetsLauncher() {
+  radioPresetsButton.hidden = selectedOutput() !== "local";
+}
+
 function handleOutputSelectionChange() {
   outputSelectionInitialized = true;
+  updateRadioPresetsLauncher();
   updateBosePresetsLauncher();
   if (lastPlaybackState !== null) {
     renderPlaybackState(lastPlaybackState);
@@ -695,6 +714,299 @@ function formatTime(seconds) {
   const minutes = Math.floor(safeSeconds / 60);
   const remainingSeconds = safeSeconds % 60;
   return `${minutes}:${remainingSeconds.toString().padStart(2, "0")}`;
+}
+
+function openRadioPresets() {
+  if (selectedOutput() !== "local") {
+    return;
+  }
+
+  hideRadioPresetForm();
+  radioPresetsDialog.showModal();
+  loadRadioPresets();
+}
+
+async function loadRadioPresets() {
+  radioPresetsMessage.textContent = "Loading presets...";
+  radioPresetsMessage.dataset.state = "";
+
+  try {
+    const response = await fetch("/api/player/local/radio/presets");
+    const data = await response.json();
+    if (!response.ok) {
+      throw new Error(apiErrorMessage(data, "Preset request failed"));
+    }
+
+    radioPresets = data.presets || [];
+    renderRadioPresets();
+    radioPresetsMessage.textContent = radioPresets.length
+      ? ""
+      : "No Pi radio presets have been added.";
+  } catch (error) {
+    radioPresets = [];
+    renderRadioPresets();
+    radioPresetsMessage.textContent = `Could not load presets: ${error.message}`;
+    radioPresetsMessage.dataset.state = "error";
+  }
+}
+
+function renderRadioPresets() {
+  radioPresetsList.replaceChildren();
+
+  radioPresets.forEach((preset, index) => {
+    const item = document.createElement("li");
+    item.className = "radio-preset-item";
+
+    const details = document.createElement("div");
+    details.className = "radio-preset-details";
+    const name = document.createElement("strong");
+    name.textContent = preset.name;
+    const url = document.createElement("span");
+    url.textContent = preset.url;
+    details.append(name, url);
+
+    const actions = document.createElement("div");
+    actions.className = "radio-preset-actions";
+    actions.append(
+      createRadioPresetButton("Play", `Play ${preset.name}`, () => {
+        playRadioPreset(preset);
+      }, "radio-preset-play-button"),
+      createRadioPresetButton("Edit", `Edit ${preset.name}`, () => {
+        showRadioPresetForm(preset);
+      }),
+      createRadioPresetButton("Up", `Move ${preset.name} up`, () => {
+        moveRadioPreset(index, -1);
+      }, "", index === 0),
+      createRadioPresetButton("Down", `Move ${preset.name} down`, () => {
+        moveRadioPreset(index, 1);
+      }, "", index === radioPresets.length - 1),
+      createRadioPresetButton("Delete", `Delete ${preset.name}`, () => {
+        deleteRadioPreset(preset);
+      }),
+    );
+
+    item.append(details, actions);
+    radioPresetsList.appendChild(item);
+  });
+}
+
+function createRadioPresetButton(
+  label,
+  accessibleLabel,
+  onClick,
+  className = "",
+  disabled = false,
+) {
+  const button = document.createElement("button");
+  button.type = "button";
+  button.className = className;
+  button.textContent = label;
+  button.setAttribute("aria-label", accessibleLabel);
+  button.title = accessibleLabel;
+  button.disabled = disabled || radioPresetRequestInProgress;
+  button.addEventListener("click", onClick);
+  return button;
+}
+
+async function playRadioPreset(preset) {
+  if (radioPresetRequestInProgress) {
+    return;
+  }
+
+  setRadioPresetBusy(true);
+  radioPresetsMessage.textContent = `Starting ${preset.name}...`;
+  radioPresetsMessage.dataset.state = "";
+  try {
+    const response = await fetch(
+      `/api/player/local/radio/presets/${encodeURIComponent(preset.id)}/play`,
+      { method: "POST" },
+    );
+    const data = await response.json();
+    if (!response.ok) {
+      throw new Error(apiErrorMessage(data, "Preset playback failed"));
+    }
+
+    lastPlaybackState = data;
+    renderPlaybackState(data);
+    radioPresetsDialog.close();
+    refreshPlaybackStatus();
+  } catch (error) {
+    radioPresetsMessage.textContent = `Could not play preset: ${error.message}`;
+    radioPresetsMessage.dataset.state = "error";
+  } finally {
+    setRadioPresetBusy(false);
+  }
+}
+
+function showRadioPresetForm(preset = null) {
+  editingRadioPresetId = preset?.id || null;
+  radioPresetFormHeading.textContent = preset ? "Edit Preset" : "Add Preset";
+  radioPresetForm.elements.name.value = preset?.name || "";
+  radioPresetForm.elements.url.value = preset?.url || "";
+  radioPresetForm.hidden = false;
+  radioPresetAddButton.hidden = true;
+  radioPresetForm.elements.name.focus();
+}
+
+function hideRadioPresetForm() {
+  editingRadioPresetId = null;
+  radioPresetForm.reset();
+  radioPresetForm.hidden = true;
+  radioPresetAddButton.hidden = false;
+}
+
+async function saveRadioPreset(event) {
+  event.preventDefault();
+  if (radioPresetRequestInProgress) {
+    return;
+  }
+
+  const presetId = editingRadioPresetId;
+  const requestUrl = presetId
+    ? `/api/player/local/radio/presets/${encodeURIComponent(presetId)}`
+    : "/api/player/local/radio/presets";
+  const body = {
+    name: radioPresetForm.elements.name.value,
+    url: radioPresetForm.elements.url.value,
+  };
+
+  setRadioPresetBusy(true);
+  radioPresetsMessage.textContent = presetId ? "Saving preset..." : "Adding preset...";
+  radioPresetsMessage.dataset.state = "";
+  try {
+    const response = await fetch(requestUrl, {
+      method: presetId ? "PUT" : "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body),
+    });
+    const preset = await response.json();
+    if (!response.ok) {
+      throw new Error(apiErrorMessage(preset, "Could not save preset"));
+    }
+
+    if (presetId) {
+      radioPresets = radioPresets.map((item) => (
+        item.id === presetId ? preset : item
+      ));
+    } else {
+      radioPresets = [...radioPresets, preset];
+    }
+    hideRadioPresetForm();
+    radioPresetsMessage.textContent = "Preset saved.";
+    radioPresetsMessage.dataset.state = "ok";
+  } catch (error) {
+    radioPresetsMessage.textContent = `Could not save preset: ${error.message}`;
+    radioPresetsMessage.dataset.state = "error";
+  } finally {
+    setRadioPresetBusy(false);
+  }
+}
+
+async function deleteRadioPreset(preset) {
+  if (
+    radioPresetRequestInProgress ||
+    !window.confirm(`Delete ${preset.name}? Current playback will continue.`)
+  ) {
+    return;
+  }
+
+  setRadioPresetBusy(true);
+  radioPresetsMessage.textContent = `Deleting ${preset.name}...`;
+  radioPresetsMessage.dataset.state = "";
+  try {
+    const response = await fetch(
+      `/api/player/local/radio/presets/${encodeURIComponent(preset.id)}`,
+      { method: "DELETE" },
+    );
+    if (!response.ok) {
+      const data = await response.json();
+      throw new Error(apiErrorMessage(data, "Could not delete preset"));
+    }
+
+    radioPresets = radioPresets.filter((item) => item.id !== preset.id);
+    if (editingRadioPresetId === preset.id) {
+      hideRadioPresetForm();
+    }
+    radioPresetsMessage.textContent = (
+      "Preset deleted. Current playback was not changed."
+    );
+    radioPresetsMessage.dataset.state = "ok";
+  } catch (error) {
+    radioPresetsMessage.textContent = `Could not delete preset: ${error.message}`;
+    radioPresetsMessage.dataset.state = "error";
+  } finally {
+    setRadioPresetBusy(false);
+  }
+}
+
+async function moveRadioPreset(index, direction) {
+  const destination = index + direction;
+  if (
+    radioPresetRequestInProgress ||
+    destination < 0 ||
+    destination >= radioPresets.length
+  ) {
+    return;
+  }
+
+  const previousOrder = [...radioPresets];
+  const updatedOrder = [...radioPresets];
+  [updatedOrder[index], updatedOrder[destination]] = [
+    updatedOrder[destination],
+    updatedOrder[index],
+  ];
+  radioPresets = updatedOrder;
+  setRadioPresetBusy(true);
+  radioPresetsMessage.textContent = "Saving preset order...";
+  radioPresetsMessage.dataset.state = "";
+
+  try {
+    const response = await fetch("/api/player/local/radio/presets/order", {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        preset_ids: radioPresets.map((preset) => preset.id),
+      }),
+    });
+    const data = await response.json();
+    if (!response.ok) {
+      throw new Error(apiErrorMessage(data, "Could not reorder presets"));
+    }
+
+    radioPresets = data.presets || radioPresets;
+    radioPresetsMessage.textContent = "Preset order saved.";
+    radioPresetsMessage.dataset.state = "ok";
+  } catch (error) {
+    radioPresets = previousOrder;
+    radioPresetsMessage.textContent = `Could not reorder presets: ${error.message}`;
+    radioPresetsMessage.dataset.state = "error";
+  } finally {
+    setRadioPresetBusy(false);
+  }
+}
+
+function setRadioPresetBusy(busy) {
+  radioPresetRequestInProgress = busy;
+  radioPresetAddButton.disabled = busy;
+  radioPresetSaveButton.disabled = busy;
+  radioPresetCancelButton.disabled = busy;
+  renderRadioPresets();
+}
+
+function closeRadioPresetsFromBackdrop(event) {
+  if (event.target !== radioPresetsDialog) {
+    return;
+  }
+
+  const bounds = radioPresetsDialog.getBoundingClientRect();
+  const insideDialog =
+    event.clientX >= bounds.left &&
+    event.clientX <= bounds.right &&
+    event.clientY >= bounds.top &&
+    event.clientY <= bounds.bottom;
+  if (!insideDialog) {
+    radioPresetsDialog.close();
+  }
 }
 
 function openBosePresets() {
@@ -1126,6 +1438,12 @@ trackProgress.addEventListener("change", () => {
 
 outputSelector.addEventListener("change", handleOutputSelectionChange);
 
+radioPresetsButton.addEventListener("click", openRadioPresets);
+radioPresetsCloseButton.addEventListener("click", () => radioPresetsDialog.close());
+radioPresetsDialog.addEventListener("click", closeRadioPresetsFromBackdrop);
+radioPresetAddButton.addEventListener("click", () => showRadioPresetForm());
+radioPresetCancelButton.addEventListener("click", hideRadioPresetForm);
+radioPresetForm.addEventListener("submit", saveRadioPreset);
 bosePresetsButton.addEventListener("click", openBosePresets);
 bosePowerButton.addEventListener("click", toggleBosePower);
 boseVolumeUpButton.addEventListener("click", () => sendBoseControlAction("volume-up"));
@@ -1143,6 +1461,7 @@ window.addEventListener("hashchange", () => {
   loadDirectory(currentPath());
 });
 
+updateRadioPresetsLauncher();
 updateBosePresetsLauncher();
 loadApp();
 setInterval(() => {

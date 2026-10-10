@@ -2,10 +2,10 @@ from dataclasses import dataclass
 from pathlib import Path
 from secrets import token_urlsafe
 from threading import Event, Lock, Thread
-from urllib.parse import urlsplit
+from uuid import UUID
 
 from fastapi import FastAPI, HTTPException, Request
-from fastapi.responses import FileResponse, HTMLResponse
+from fastapi.responses import FileResponse, HTMLResponse, Response
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
@@ -37,6 +37,14 @@ from .library import (
 )
 from .playlist import PlaybackQueue, QueueTrack
 from .player import MpvPlayer, PlayerError
+from .radio_presets import (
+    RadioPresetNotFoundError,
+    RadioPresetOrderConflictError,
+    RadioPresetStorageError,
+    RadioPresetStore,
+    normalize_radio_name,
+    normalize_radio_url,
+)
 from .restart import (
     ApplicationRestarter,
     RestartAlreadyScheduledError,
@@ -69,36 +77,24 @@ class LocalRadioState:
 class LocalRadioPlayRequest(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
-    url: str = Field(min_length=1, max_length=2048)
-    name: str = Field(min_length=1, max_length=200)
+    url: str
+    name: str
 
     @field_validator("url")
     @classmethod
     def validate_url(cls, value: str) -> str:
-        stream_url = value.strip()
-        if any(character.isspace() for character in stream_url):
-            raise ValueError("Radio URL must not contain whitespace")
-
-        try:
-            parsed_url = urlsplit(stream_url)
-            hostname = parsed_url.hostname
-            parsed_url.port
-        except ValueError as error:
-            raise ValueError("Radio URL is invalid") from error
-
-        if parsed_url.scheme.lower() not in {"http", "https"} or not hostname:
-            raise ValueError("Radio URL must be an absolute HTTP or HTTPS URL")
-        if parsed_url.username is not None or parsed_url.password is not None:
-            raise ValueError("Radio URL must not contain credentials")
-        return stream_url
+        return normalize_radio_url(value)
 
     @field_validator("name")
     @classmethod
     def validate_name(cls, value: str) -> str:
-        display_name = value.strip()
-        if not display_name:
-            raise ValueError("Radio name must not be blank")
-        return display_name
+        return normalize_radio_name(value)
+
+
+class RadioPresetOrderRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    preset_ids: list[UUID]
 
 
 class SettingsUpdateRequest(BaseModel):
@@ -131,6 +127,9 @@ def create_app(
     )
     app.state.settings = app_settings
     app.state.settings_store = SettingsConfigurationStore(app_settings)
+    app.state.radio_preset_store = RadioPresetStore(
+        app.state.settings_store.config_path.parent / "radio_presets.json",
+    )
     app.state.component_status_provider = ComponentStatusProvider(
         __version__,
         app_settings.aftertouch_base_url,
@@ -360,6 +359,79 @@ def create_app(
                 return _playback_status(app)
         except PlayerError as error:
             raise HTTPException(status_code=503, detail=str(error)) from error
+
+    @app.get("/api/player/local/radio/presets")
+    def read_local_radio_presets() -> dict[str, object]:
+        try:
+            presets = app.state.radio_preset_store.list_presets()
+        except RadioPresetStorageError as error:
+            raise HTTPException(status_code=503, detail=str(error)) from error
+        return {"presets": [preset.as_dict() for preset in presets]}
+
+    @app.post("/api/player/local/radio/presets", status_code=201)
+    def create_local_radio_preset(request: LocalRadioPlayRequest) -> dict[str, str]:
+        try:
+            preset = app.state.radio_preset_store.create(request.name, request.url)
+        except RadioPresetStorageError as error:
+            raise HTTPException(status_code=503, detail=str(error)) from error
+        return preset.as_dict()
+
+    @app.put("/api/player/local/radio/presets/order")
+    def reorder_local_radio_presets(
+        request: RadioPresetOrderRequest,
+    ) -> dict[str, object]:
+        try:
+            presets = app.state.radio_preset_store.reorder(request.preset_ids)
+        except RadioPresetOrderConflictError as error:
+            raise HTTPException(status_code=409, detail=str(error)) from error
+        except RadioPresetStorageError as error:
+            raise HTTPException(status_code=503, detail=str(error)) from error
+        return {"presets": [preset.as_dict() for preset in presets]}
+
+    @app.post("/api/player/local/radio/presets/{preset_id}/play")
+    def play_local_radio_preset(preset_id: UUID) -> dict[str, object]:
+        try:
+            preset = app.state.radio_preset_store.get(preset_id)
+        except RadioPresetNotFoundError as error:
+            raise HTTPException(status_code=404, detail=str(error)) from error
+        except RadioPresetStorageError as error:
+            raise HTTPException(status_code=503, detail=str(error)) from error
+
+        try:
+            with app.state.playback_lock:
+                _play_local_radio(app, preset.url, preset.name)
+                app.state.active_output = "local"
+                app.state.playback_message = f"Playing live radio: {preset.name}"
+                return _playback_status(app)
+        except PlayerError as error:
+            raise HTTPException(status_code=503, detail=str(error)) from error
+
+    @app.put("/api/player/local/radio/presets/{preset_id}")
+    def update_local_radio_preset(
+        preset_id: UUID,
+        request: LocalRadioPlayRequest,
+    ) -> dict[str, str]:
+        try:
+            preset = app.state.radio_preset_store.update(
+                preset_id,
+                request.name,
+                request.url,
+            )
+        except RadioPresetNotFoundError as error:
+            raise HTTPException(status_code=404, detail=str(error)) from error
+        except RadioPresetStorageError as error:
+            raise HTTPException(status_code=503, detail=str(error)) from error
+        return preset.as_dict()
+
+    @app.delete("/api/player/local/radio/presets/{preset_id}", status_code=204)
+    def delete_local_radio_preset(preset_id: UUID) -> Response:
+        try:
+            app.state.radio_preset_store.delete(preset_id)
+        except RadioPresetNotFoundError as error:
+            raise HTTPException(status_code=404, detail=str(error)) from error
+        except RadioPresetStorageError as error:
+            raise HTTPException(status_code=503, detail=str(error)) from error
+        return Response(status_code=204)
 
     @app.post("/api/player/bose/play")
     def play_bose_file(

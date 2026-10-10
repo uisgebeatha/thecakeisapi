@@ -110,8 +110,10 @@ h1 {
   white-space: nowrap;
 }
 
+.radio-presets-open-button,
 .bose-presets-open-button,
 .settings-open-button,
+.radio-presets-close-button,
 .settings-close-button {
   display: inline-grid;
   place-items: center;
@@ -134,17 +136,30 @@ h1 {
   fill: currentColor;
 }
 
+.radio-presets-open-button[hidden],
 .bose-presets-open-button[hidden] {
   display: none;
 }
 
+.radio-presets-open-button:hover,
+.radio-presets-open-button:focus-visible,
 .bose-presets-open-button:hover,
 .bose-presets-open-button:focus-visible,
 .settings-open-button:hover,
 .settings-open-button:focus-visible,
+.radio-presets-close-button:hover,
+.radio-presets-close-button:focus-visible,
 .settings-close-button:hover,
 .settings-close-button:focus-visible {
   background: var(--surface-subtle);
+}
+
+.radio-presets-open-button .topbar-button-icon {
+  fill: none;
+  stroke: currentColor;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  stroke-width: 1.7;
 }
 
 .status[data-state="ok"] {
@@ -343,6 +358,190 @@ h1 {
   font-weight: 700;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+.radio-presets-dialog {
+  width: min(42rem, calc(100% - 1.5rem));
+  max-height: calc(100vh - 1.5rem);
+  max-height: calc(100dvh - 1.5rem);
+  border: 1px solid var(--border);
+  border-radius: 0.4rem;
+  padding: 0;
+  overflow: auto;
+  background: var(--surface);
+  color: inherit;
+  box-shadow: 0 0.8rem 2rem rgba(20, 24, 28, 0.28);
+}
+
+.radio-presets-dialog::backdrop {
+  background: rgba(20, 24, 28, 0.55);
+}
+
+.radio-presets-dialog-header {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  padding: 0.8rem 1rem;
+  border-bottom: 1px solid var(--border);
+  background: var(--surface);
+}
+
+.radio-presets-dialog h2 {
+  font-size: 1.05rem;
+}
+
+.radio-presets-dialog-header .message {
+  min-height: 0;
+  margin-top: 0.15rem;
+  font-size: 0.76rem;
+}
+
+.radio-presets-close-button {
+  width: 2.5rem;
+  height: 2.5rem;
+}
+
+.radio-presets-dialog-body {
+  padding: 0.8rem 1rem 1rem;
+}
+
+#radio-presets-message {
+  min-height: 1.2rem;
+  margin-bottom: 0.6rem;
+  font-size: 0.8rem;
+}
+
+.radio-presets-list {
+  display: grid;
+  gap: 0.55rem;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.radio-preset-item {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 0.65rem;
+  min-width: 0;
+  border: 1px solid var(--border);
+  border-radius: 0.4rem;
+  padding: 0.55rem;
+  background: var(--surface-subtle);
+}
+
+.radio-preset-details {
+  display: grid;
+  gap: 0.15rem;
+  min-width: 0;
+}
+
+.radio-preset-details strong,
+.radio-preset-details span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.radio-preset-details strong {
+  font-size: 0.9rem;
+}
+
+.radio-preset-details span {
+  color: var(--muted);
+  font-size: 0.7rem;
+}
+
+.radio-preset-actions,
+.radio-preset-form-actions,
+.radio-presets-toolbar {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 0.35rem;
+}
+
+.radio-preset-actions {
+  justify-content: flex-end;
+}
+
+.radio-preset-actions button,
+.radio-preset-form-actions button,
+.radio-presets-toolbar button {
+  min-height: 2.25rem;
+  border: 1px solid #929ba6;
+  border-radius: 0.35rem;
+  padding: 0.35rem 0.55rem;
+  background: var(--surface);
+  color: inherit;
+  cursor: pointer;
+  font-size: 0.76rem;
+  font-weight: 650;
+}
+
+.radio-preset-actions button:disabled,
+.radio-preset-form-actions button:disabled,
+.radio-presets-toolbar button:disabled {
+  cursor: not-allowed;
+  opacity: 0.5;
+}
+
+.radio-preset-play-button,
+.radio-preset-primary-button {
+  border-color: var(--accent) !important;
+  background: var(--accent-soft) !important;
+  color: var(--accent) !important;
+}
+
+.radio-presets-toolbar {
+  margin-top: 0.75rem;
+}
+
+.radio-presets-toolbar[hidden],
+.radio-preset-form[hidden],
+.radio-preset-primary-button[hidden] {
+  display: none;
+}
+
+.radio-preset-form {
+  display: grid;
+  gap: 0.65rem;
+  margin-top: 0.75rem;
+  border-top: 1px solid var(--border);
+  padding-top: 0.75rem;
+}
+
+.radio-preset-form h3 {
+  font-size: 0.9rem;
+}
+
+.radio-preset-form label {
+  display: grid;
+  gap: 0.25rem;
+  color: var(--muted);
+  font-size: 0.78rem;
+  font-weight: 650;
+}
+
+.radio-preset-form input {
+  width: 100%;
+  min-height: 2.75rem;
+  border: 1px solid #929ba6;
+  border-radius: 0.35rem;
+  padding: 0.55rem 0.65rem;
+  background: var(--surface);
+  color: inherit;
+  font-weight: 400;
+}
+
+.radio-presets-dialog button:focus-visible,
+.radio-presets-dialog input:focus-visible {
+  outline-color: color-mix(in srgb, var(--accent) 65%, transparent);
 }
 
 .message[data-state="warning"] {
@@ -1233,11 +1432,26 @@ button.entry-details-button {
     grid-column: 1 / -1;
   }
 
+  .radio-presets-dialog,
   .settings-dialog {
     width: calc(100% - 0.75rem);
     max-width: calc(100% - 0.75rem);
     max-height: calc(100vh - 0.75rem);
     max-height: calc(100dvh - 0.75rem);
+  }
+
+  .radio-preset-item {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .radio-preset-actions {
+    justify-content: flex-start;
+  }
+
+  .radio-presets-dialog-header,
+  .radio-presets-dialog-body {
+    padding-right: 0.8rem;
+    padding-left: 0.8rem;
   }
 
   .bose-presets-dialog {
@@ -1336,6 +1550,7 @@ button.entry-details-button {
     font-size: 0.72rem;
   }
 
+  .radio-presets-open-button,
   .bose-presets-open-button,
   .settings-open-button {
     width: 2rem;
@@ -1401,6 +1616,12 @@ button.entry-details-button {
   }
 
   .nav-button,
+  .radio-presets-open-button,
+  .radio-presets-close-button,
+  .radio-preset-actions button,
+  .radio-preset-form-actions button,
+  .radio-presets-toolbar button,
+  .radio-preset-form input,
   .bose-presets-open-button,
   .bose-preset-button,
   .bose-future-control,
@@ -1416,6 +1637,8 @@ button.entry-details-button {
     color: #f2f2ec;
   }
 
+  .radio-presets-dialog,
+  .radio-presets-dialog-header,
   .bose-presets-dialog,
   .settings-dialog,
   .settings-dialog-header {

@@ -202,7 +202,7 @@
 - [x] Keep radio outside the shared file queue and preserve both queue cursors.
 - [x] Prevent radio termination from advancing or repeating queued files.
 - [x] Show local radio state in the existing Now Playing UI.
-- [ ] Add TheCakeIsAPI-managed radio presets.
+- [x] Add TheCakeIsAPI-managed Pi-local radio presets with persistent CRUD and ordering.
 
 ## Design Investigation
 
