@@ -96,7 +96,7 @@ Support:
 1. Local playback using mpv
 2. Bose playback using Bose local API
 
-The queue must remain independent from the output backend.
+Pi-local and Bose playback must maintain separate file queues and cursors. Queue operations for one output must never mutate the other output's queue, cursor, or playback.
 
 Future output backends may be added later.
 

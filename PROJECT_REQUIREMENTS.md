@@ -55,7 +55,7 @@ Build a minimal proof of concept:
 - Single-user control is acceptable for the first version.
 - Playlists will be temporary queues only for the first version.
 - SMB will be used for NAS sharing.
-- The app should support switching output between Pi audio and Bose without rebuilding the queue.
+- Pi audio and Bose should maintain independent temporary queues and cursors. Switching the browser output selection should display the selected output's preserved queue without rebuilding or mutating either queue.
 - Bose SoundTouch is the default browser playback selection; Pi 4 local playback remains available.
 - The UI should distinguish the selected output for new playback from the currently active output.
 - While Bose playback is active, periodically synchronize app-side state with the local Bose `/now_playing` endpoint.

@@ -121,10 +121,12 @@ def queue_tracks() -> list[QueueTrack]:
     ]
 
 
-def set_independent_queue_cursors(app) -> None:
-    tracks = queue_tracks()
-    app.state.playback_queue.set_tracks(tracks, "first.mp3", "local")
-    app.state.playback_queue.set_tracks(tracks, "third.mp3", "bose")
+def set_independent_queues(app) -> None:
+    app.state.local_playback_queue.set_tracks(queue_tracks(), "first.mp3")
+    app.state.bose_playback_queue.set_tracks(
+        [QueueTrack(path="third.mp3", name="third.mp3")],
+        "third.mp3",
+    )
 
 
 def start_radio(app, url: str = TEST_STREAM_URL, name: str = "Test Radio"):
@@ -166,7 +168,7 @@ class LocalRadioValidationTests(unittest.TestCase):
 class LocalRadioPlaybackTests(unittest.TestCase):
     def test_radio_start_bypasses_file_validation_and_preserves_queue_and_bose(self) -> None:
         with radio_test_app() as app:
-            set_independent_queue_cursors(app)
+            set_independent_queues(app)
             bose_state = BosePlaybackState(
                 track_path="third.mp3",
                 track_name="third.mp3",
@@ -181,15 +183,15 @@ class LocalRadioPlaybackTests(unittest.TestCase):
 
             resolve_audio_file.assert_not_called()
             self.assertEqual(app.state.local_player.played_sources, [TEST_STREAM_URL])
-            self.assertEqual(app.state.playback_queue.current("local").path, "first.mp3")
-            self.assertEqual(app.state.playback_queue.current("bose").path, "third.mp3")
+            self.assertEqual(app.state.local_playback_queue.current().path, "first.mp3")
+            self.assertEqual(app.state.bose_playback_queue.current().path, "third.mp3")
             self.assertIs(app.state.bose_playback_state, bose_state)
             self.assertTrue(app.state.bose_playback_state.ownership_confirmed)
             self.assertEqual(status["active_output"], "local")
 
     def test_active_radio_has_distinct_safe_local_projection(self) -> None:
         with radio_test_app() as app:
-            set_independent_queue_cursors(app)
+            set_independent_queues(app)
 
             status = start_radio(app, name="Example FM")
             local_status = status["outputs"]["local"]
@@ -209,7 +211,7 @@ class LocalRadioPlaybackTests(unittest.TestCase):
 
     def test_stop_clears_radio_mode_then_resume_uses_preserved_file_cursor(self) -> None:
         with radio_test_app() as app:
-            set_independent_queue_cursors(app)
+            set_independent_queues(app)
             bose_state = BosePlaybackState(
                 track_path="third.mp3",
                 track_name="third.mp3",
@@ -224,8 +226,8 @@ class LocalRadioPlaybackTests(unittest.TestCase):
 
             self.assertIsNone(app.state.local_radio_state)
             self.assertEqual(stop_status["outputs"]["local"]["source_type"], "none")
-            self.assertEqual(app.state.playback_queue.current("local").path, "first.mp3")
-            self.assertEqual(app.state.playback_queue.current("bose").path, "third.mp3")
+            self.assertEqual(app.state.local_playback_queue.current().path, "first.mp3")
+            self.assertEqual(app.state.bose_playback_queue.current().path, "third.mp3")
             self.assertIs(app.state.bose_playback_state, bose_state)
             self.assertTrue(app.state.bose_playback_state.ownership_confirmed)
 
@@ -236,12 +238,27 @@ class LocalRadioPlaybackTests(unittest.TestCase):
             self.assertEqual(resumed_source.name, "first.mp3")
             self.assertNotEqual(resumed_source, TEST_STREAM_URL)
 
+    def test_clear_queue_during_radio_leaves_radio_and_bose_queue_untouched(self) -> None:
+        with radio_test_app() as app:
+            set_independent_queues(app)
+            start_radio(app)
+
+            status = route_endpoint(app, "/api/player/local/queue/clear", "POST")()
+
+            self.assertEqual(app.state.local_playback_queue.as_dict()["tracks"], [])
+            self.assertEqual(app.state.bose_playback_queue.current().path, "third.mp3")
+            self.assertIsNotNone(app.state.local_radio_state)
+            self.assertEqual(app.state.local_player.state, "playing")
+            self.assertEqual(app.state.local_player.source, TEST_STREAM_URL)
+            self.assertEqual(app.state.local_player.stop_count, 0)
+            self.assertEqual(status["outputs"]["local"]["source_type"], "radio")
+
     def test_radio_transport_guards_preserve_cursor_repeat_and_player(self) -> None:
         with radio_test_app() as app:
-            set_independent_queue_cursors(app)
+            set_independent_queues(app)
             app.state.repeat_track = True
             start_radio(app)
-            local_cursor = app.state.playback_queue.current("local")
+            local_cursor = app.state.local_playback_queue.current()
 
             route_endpoint(app, "/api/player/local/resume", "POST")()
             route_endpoint(app, "/api/player/local/pause", "POST")()
@@ -250,8 +267,8 @@ class LocalRadioPlaybackTests(unittest.TestCase):
             route_endpoint(app, "/api/player/local/previous", "POST")()
             route_endpoint(app, "/api/player/local/repeat", "POST")(False)
 
-            self.assertEqual(app.state.playback_queue.current("local"), local_cursor)
-            self.assertEqual(app.state.playback_queue.current("bose").path, "third.mp3")
+            self.assertEqual(app.state.local_playback_queue.current(), local_cursor)
+            self.assertEqual(app.state.bose_playback_queue.current().path, "third.mp3")
             self.assertTrue(app.state.repeat_track)
             self.assertEqual(len(app.state.local_player.played_sources), 1)
             self.assertEqual(app.state.local_player.pause_count, 0)
@@ -261,7 +278,7 @@ class LocalRadioPlaybackTests(unittest.TestCase):
 
     def test_radio_exit_records_failure_without_repeat_or_queue_advance(self) -> None:
         with radio_test_app() as app:
-            set_independent_queue_cursors(app)
+            set_independent_queues(app)
             bose_state = BosePlaybackState(
                 track_path="third.mp3",
                 track_name="third.mp3",
@@ -277,8 +294,8 @@ class LocalRadioPlaybackTests(unittest.TestCase):
             _sync_local_playback(app)
             status = _playback_status(app)
 
-            self.assertEqual(app.state.playback_queue.current("local").path, "first.mp3")
-            self.assertEqual(app.state.playback_queue.current("bose").path, "third.mp3")
+            self.assertEqual(app.state.local_playback_queue.current().path, "first.mp3")
+            self.assertEqual(app.state.bose_playback_queue.current().path, "third.mp3")
             self.assertIs(app.state.bose_playback_state, bose_state)
             self.assertTrue(app.state.bose_playback_state.ownership_confirmed)
             self.assertEqual(app.state.local_player.played_sources, [TEST_STREAM_URL])

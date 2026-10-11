@@ -82,7 +82,7 @@
 - [x] Add output selector:
   - [x] Local Pi
   - [x] Bose SoundTouch
-- [x] Maintain queue when changing output where practical.
+- [x] Preserve each output's queue when changing the browser output selection.
 - [x] Display Bose app-side playback/timer status.
 - [x] Display live Bose playback status from the speaker beyond start confirmation.
 - [ ] Preserve playback position where practical.
@@ -195,11 +195,13 @@
 
 1. [x] Maintain independent Pi-local and Bose playback state, with accurate Now Playing when switching outputs.
 2. [x] Allow Pi-local and Bose playback to continue independently when starting the other output.
+3. [x] Maintain independent Pi-local and Bose file queues, cursors, queue controls, and automatic advancement.
+4. [ ] Manually verify independent queues and simultaneous playback on the Pi and Bose speaker.
 
 ## Pi-local Internet Radio
 
 - [x] Add API-first HTTP/HTTPS internet-radio playback through local mpv.
-- [x] Keep radio outside the shared file queue and preserve both queue cursors.
+- [x] Keep radio outside the Pi-local file queue and preserve both independent queues and cursors.
 - [x] Prevent radio termination from advancing or repeating queued files.
 - [x] Show local radio state in the existing Now Playing UI.
 - [x] Add TheCakeIsAPI-managed Pi-local radio presets with persistent CRUD and ordering.

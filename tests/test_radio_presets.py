@@ -382,8 +382,11 @@ class RadioPresetApiTests(unittest.TestCase):
                 QueueTrack(path="first.mp3", name="first.mp3"),
                 QueueTrack(path="second.mp3", name="second.mp3"),
             ]
-            app.state.playback_queue.set_tracks(tracks, "first.mp3", "local")
-            app.state.playback_queue.set_tracks(tracks, "second.mp3", "bose")
+            app.state.local_playback_queue.set_tracks(tracks, "first.mp3")
+            app.state.bose_playback_queue.set_tracks(
+                [QueueTrack(path="second.mp3", name="second.mp3")],
+                "second.mp3",
+            )
             app.state.repeat_track = True
             bose_state = BosePlaybackState(
                 track_path="second.mp3",
@@ -420,8 +423,8 @@ class RadioPresetApiTests(unittest.TestCase):
 
             play_helper.assert_called_once_with(app, SECOND_URL, "Current")
             self.assertEqual(app.state.local_player.played_sources, [SECOND_URL])
-            self.assertEqual(app.state.playback_queue.current("local").path, "first.mp3")
-            self.assertEqual(app.state.playback_queue.current("bose").path, "second.mp3")
+            self.assertEqual(app.state.local_playback_queue.current().path, "first.mp3")
+            self.assertEqual(app.state.bose_playback_queue.current().path, "second.mp3")
             self.assertTrue(app.state.repeat_track)
             self.assertIs(app.state.bose_playback_state, bose_state)
             self.assertEqual(status["active_output"], "local")
@@ -430,8 +433,8 @@ class RadioPresetApiTests(unittest.TestCase):
     def test_crud_and_active_edit_delete_do_not_change_playback_state(self) -> None:
         with preset_test_app() as app:
             tracks = [QueueTrack(path="first.mp3", name="first.mp3")]
-            app.state.playback_queue.set_tracks(tracks, "first.mp3", "local")
-            app.state.playback_queue.set_tracks(tracks, "first.mp3", "bose")
+            app.state.local_playback_queue.set_tracks(tracks, "first.mp3")
+            app.state.bose_playback_queue.set_tracks(tracks, "first.mp3")
             app.state.repeat_track = True
             bose_state = BosePlaybackState(state="stopped")
             app.state.bose_playback_state = bose_state
@@ -481,8 +484,8 @@ class RadioPresetApiTests(unittest.TestCase):
             self.assertEqual(active_state.display_name, "Playing")
             self.assertEqual(active_state.stream_url, FIRST_URL)
             self.assertEqual(app.state.local_player.source, FIRST_URL)
-            self.assertEqual(app.state.playback_queue.current("local").path, "first.mp3")
-            self.assertEqual(app.state.playback_queue.current("bose").path, "first.mp3")
+            self.assertEqual(app.state.local_playback_queue.current().path, "first.mp3")
+            self.assertEqual(app.state.bose_playback_queue.current().path, "first.mp3")
             self.assertTrue(app.state.repeat_track)
             self.assertIs(app.state.bose_playback_state, bose_state)
 

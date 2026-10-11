@@ -54,10 +54,9 @@ class WebUiTransportTests(unittest.TestCase):
     def test_play_button_is_available_for_stopped_bose_queue_item(self) -> None:
         app_js = APP_JS.read_text(encoding="utf-8")
 
-        self.assertIn('output === "bose" ? "is_current_bose" : "is_current_local"', app_js)
-        self.assertIn("queue.some((track) => isQueueTrackCurrent", app_js)
+        self.assertIn("const hasQueuedTrack = Boolean(queueState.current_path);", app_js)
         self.assertIn(
-            "playButton.disabled = externalBose || !hasTrack || isStarting || localRadio;",
+            "!hasTrack || isStarting || localRadio || (externalBose && !hasQueuedTrack)",
             app_js,
         )
         self.assertNotIn("playButton.disabled = !hasTrack || isPlaying", app_js)
@@ -66,14 +65,16 @@ class WebUiTransportTests(unittest.TestCase):
         app_js = APP_JS.read_text(encoding="utf-8")
 
         self.assertIn(
-            "renderQueue(playbackState.queue || [], selectedOutput(), outputState);",
+            "const queueState = queueView(playbackState, selectedOutput());",
             app_js,
         )
+        self.assertIn("renderQueue(queue, selectedOutput(), outputState);", app_js)
         self.assertIn(
             "function isQueueTrackCurrent(track, output, outputState = null)",
             app_js,
         )
-        self.assertIn("track[outputFlag] ?? track.is_current ?? false", app_js)
+        self.assertIn("return track.is_current ?? false;", app_js)
+        self.assertIn('output === "bose" && outputState?.external_playback_active', app_js)
 
     def test_local_radio_uses_existing_player_without_finite_track_controls(self) -> None:
         app_js = APP_JS.read_text(encoding="utf-8")
@@ -128,7 +129,7 @@ class WebUiTransportTests(unittest.TestCase):
         self.assertEqual(app_js.count("fetch(playbackStatusUrl())"), 2)
         self.assertIn("refreshPlaybackStatus();", app_js)
         self.assertIn(
-            "/static/app.js?v=__THECAKEISAPI_VERSION__&state=radio-presets",
+            "/static/app.js?v=__THECAKEISAPI_VERSION__&state=independent-queues",
             index_html,
         )
 
@@ -257,6 +258,13 @@ class WebUiTransportTests(unittest.TestCase):
             "function transportEndpoint(action, output = transportOutput())",
             app_js,
         )
+        self.assertIn(
+            "function queueEndpoint(action, output = selectedOutput())",
+            app_js,
+        )
+        self.assertIn('return `/api/player/${output}/queue/${action}`;', app_js)
+        self.assertIn('fetch(queueEndpoint("add")', app_js)
+        self.assertIn('sendTransportCommand(queueEndpoint("clear"));', app_js)
 
     def test_ui_has_dedicated_version_and_active_output_indicators(self) -> None:
         index_html = INDEX_HTML.read_text(encoding="utf-8")
@@ -642,7 +650,7 @@ class WebUiBosePresetTests(unittest.TestCase):
         self.assertIn('aria-label="Bose Presets"', index_html)
         self.assertIn('<svg class="topbar-button-icon"', index_html)
         self.assertIn(
-            "/static/styles.css?v=__THECAKEISAPI_VERSION__&state=radio-presets",
+            "/static/styles.css?v=__THECAKEISAPI_VERSION__&state=independent-queues",
             index_html,
         )
         self.assertIn(

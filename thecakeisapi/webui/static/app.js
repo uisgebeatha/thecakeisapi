@@ -312,7 +312,7 @@ async function addToQueue(entry, addButton) {
   playbackStatus.dataset.state = "";
 
   try {
-    const response = await fetch("/api/player/local/queue/add", {
+    const response = await fetch(queueEndpoint("add"), {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
@@ -400,6 +400,8 @@ function syncOutputSelector(playbackState) {
 
 function renderPlaybackState(playbackState) {
   const outputState = playbackView(playbackState, selectedOutput());
+  const queueState = queueView(playbackState, selectedOutput());
+  const queue = queueState.tracks || [];
   const externalBose = isExternalBosePlayback(outputState);
   nowPlayingTitle.textContent = nowPlayingLabel(outputState);
   playbackStatus.textContent = playbackMessage(outputState);
@@ -408,11 +410,11 @@ function renderPlaybackState(playbackState) {
     : outputState.state === "stopped" && !externalBose ? "" : "ok";
 
   renderTimer(outputState);
-  renderQueue(playbackState.queue || [], selectedOutput(), outputState);
+  renderQueue(queue, selectedOutput(), outputState);
   renderActiveOutput(outputState);
   updateTransportButtons(
     outputState,
-    playbackState.queue || [],
+    queueState,
     playbackState.repeat_track,
   );
   updateRadioPresetsLauncher();
@@ -423,6 +425,19 @@ function renderPlaybackState(playbackState) {
 function playbackView(playbackState, output) {
   const outputState = playbackState?.outputs?.[output];
   return outputState || playbackState || {};
+}
+
+function queueView(playbackState, output) {
+  const queueState = playbackState?.queues?.[output];
+  if (queueState) {
+    return queueState;
+  }
+
+  const tracks = playbackState?.queue || [];
+  return {
+    current_path: tracks.find((track) => track.is_current)?.path ?? null,
+    tracks,
+  };
 }
 
 function nowPlayingLabel(outputState) {
@@ -543,8 +558,10 @@ function isQueueTrackCurrent(track, output, outputState = null) {
   if (output === "local" && isLocalRadioPlayback(outputState)) {
     return false;
   }
-  const outputFlag = output === "bose" ? "is_current_bose" : "is_current_local";
-  return track[outputFlag] ?? track.is_current ?? false;
+  if (output === "bose" && outputState?.external_playback_active) {
+    return false;
+  }
+  return track.is_current ?? false;
 }
 
 function createQueueButton(label, onClick) {
@@ -558,21 +575,19 @@ function createQueueButton(label, onClick) {
 
 function removeQueueTrack(path) {
   const params = new URLSearchParams({ path });
-  sendTransportCommand(`/api/player/local/queue/remove?${params.toString()}`);
+  sendTransportCommand(`${queueEndpoint("remove")}?${params.toString()}`);
 }
 
 function moveQueueTrack(path, direction) {
   const params = new URLSearchParams({ path });
-  sendTransportCommand(`/api/player/local/queue/${direction}?${params.toString()}`);
+  sendTransportCommand(`${queueEndpoint(direction)}?${params.toString()}`);
 }
 
-function updateTransportButtons(outputState, queue, repeatTrack) {
+function updateTransportButtons(outputState, queueState, repeatTrack) {
   const externalBose = isExternalBosePlayback(outputState);
   const localRadio = isLocalRadioPlayback(outputState);
-  const hasTrack = Boolean(
-    outputState.now_playing ||
-      queue.some((track) => isQueueTrackCurrent(track, selectedOutput(), outputState)),
-  );
+  const hasQueuedTrack = Boolean(queueState.current_path);
+  const hasTrack = Boolean(outputState.now_playing || hasQueuedTrack);
   const isPlaying = outputState.state === "playing";
   const isPaused = isPausedPlayback(outputState);
   const isStarting = outputState.state === "starting";
@@ -581,7 +596,8 @@ function updateTransportButtons(outputState, queue, repeatTrack) {
     : isPlaying ? "Pause" : isPaused ? "Resume" : "Play";
   const repeatLabel = repeatTrack ? "Repeat track on" : "Repeat track off";
 
-  playButton.disabled = externalBose || !hasTrack || isStarting || localRadio;
+  playButton.disabled =
+    !hasTrack || isStarting || localRadio || (externalBose && !hasQueuedTrack);
   playButton.dataset.controlState = isPlaying ? "pause" : "play";
   playButton.setAttribute("aria-label", playPauseLabel);
   playButton.title = playPauseLabel;
@@ -674,6 +690,10 @@ function transportEndpoint(action, output = transportOutput()) {
     return `/api/player/bose/${action}`;
   }
   return `/api/player/local/${action}`;
+}
+
+function queueEndpoint(action, output = selectedOutput()) {
+  return `/api/player/${output}/queue/${action}`;
 }
 
 function playPauseAction(outputState) {
@@ -1408,7 +1428,7 @@ nextButton.addEventListener("click", () => {
 });
 
 clearQueueButton.addEventListener("click", () => {
-  sendTransportCommand("/api/player/local/queue/clear");
+  sendTransportCommand(queueEndpoint("clear"));
 });
 
 repeatButton.addEventListener("click", () => {
