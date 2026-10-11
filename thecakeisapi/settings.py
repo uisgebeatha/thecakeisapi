@@ -11,6 +11,12 @@ from urllib.parse import urlparse
 HOSTNAME_LABEL_PATTERN = re.compile(
     r"^[A-Za-z0-9](?:[A-Za-z0-9-]{0,61}[A-Za-z0-9])?$",
 )
+BOSE_PLAYBACK_METHOD_AFTERTOUCH = "aftertouch_custom_radio"
+BOSE_PLAYBACK_METHOD_STORED_MUSIC = "stored_music_experimental"
+BOSE_PLAYBACK_METHODS = {
+    BOSE_PLAYBACK_METHOD_AFTERTOUCH,
+    BOSE_PLAYBACK_METHOD_STORED_MUSIC,
+}
 
 
 @dataclass(frozen=True)
@@ -21,6 +27,9 @@ class Settings:
     aftertouch_base_url: str | None = None
     public_base_url: str | None = None
     soundtouch_cli_command: str = "soundtouch-cli"
+    bose_playback_method: str = BOSE_PLAYBACK_METHOD_AFTERTOUCH
+    bose_stored_music_source_account: str | None = None
+    minidlna_database_path: Path = Path("/var/cache/minidlna/files.db")
     bose_start_confirm_timeout_seconds: float = 8.0
     bose_start_poll_interval_seconds: float = 0.5
     bose_state_poll_interval_seconds: float = 5.0
@@ -60,6 +69,29 @@ class Settings:
                 config_values,
                 "soundtouch_cli_command",
                 cls.soundtouch_cli_command,
+            ),
+        )
+        bose_playback_method = os.getenv(
+            "THECAKEISAPI_BOSE_PLAYBACK_METHOD",
+            cls._read_string(
+                config_values,
+                "bose_playback_method",
+                cls.bose_playback_method,
+            ),
+        )
+        bose_stored_music_source_account = os.getenv(
+            "THECAKEISAPI_BOSE_STORED_MUSIC_SOURCE_ACCOUNT",
+            cls._read_optional_string(
+                config_values,
+                "bose_stored_music_source_account",
+            ),
+        )
+        minidlna_database_path = os.getenv(
+            "THECAKEISAPI_MINIDLNA_DATABASE_PATH",
+            cls._read_string(
+                config_values,
+                "minidlna_database_path",
+                str(cls.minidlna_database_path),
             ),
         )
         bose_start_confirm_timeout_seconds = os.getenv(
@@ -118,6 +150,9 @@ class Settings:
             aftertouch_base_url=aftertouch_base_url,
             public_base_url=public_base_url,
             soundtouch_cli_command=soundtouch_cli_command,
+            bose_playback_method=bose_playback_method,
+            bose_stored_music_source_account=bose_stored_music_source_account,
+            minidlna_database_path=Path(minidlna_database_path),
             bose_start_confirm_timeout_seconds=cls._parse_float(
                 "bose_start_confirm_timeout_seconds",
                 bose_start_confirm_timeout_seconds,
@@ -158,6 +193,13 @@ class Settings:
         if not self.soundtouch_cli_command.strip():
             raise ValueError("soundtouch_cli_command must not be empty")
 
+        if self.bose_playback_method not in BOSE_PLAYBACK_METHODS:
+            allowed_methods = ", ".join(sorted(BOSE_PLAYBACK_METHODS))
+            raise ValueError(f"bose_playback_method must be one of: {allowed_methods}")
+
+        if not str(self.minidlna_database_path).strip():
+            raise ValueError("minidlna_database_path must not be empty")
+
         if self.bose_speaker_ip not in ("", None):
             self._validate_speaker_address(self.bose_speaker_ip)
 
@@ -187,6 +229,9 @@ class Settings:
             "aftertouch_base_url": self.aftertouch_base_url,
             "public_base_url": self.public_base_url,
             "soundtouch_cli_command": self.soundtouch_cli_command,
+            "bose_playback_method": self.bose_playback_method,
+            "bose_stored_music_source_account": self.bose_stored_music_source_account,
+            "minidlna_database_path": str(self.minidlna_database_path),
             "bose_start_confirm_timeout_seconds": self.bose_start_confirm_timeout_seconds,
             "bose_start_poll_interval_seconds": self.bose_start_poll_interval_seconds,
             "bose_state_poll_interval_seconds": self.bose_state_poll_interval_seconds,
@@ -222,6 +267,9 @@ class Settings:
             "aftertouch_base_url",
             "public_base_url",
             "soundtouch_cli_command",
+            "bose_playback_method",
+            "bose_stored_music_source_account",
+            "minidlna_database_path",
             "bose_start_confirm_timeout_seconds",
             "bose_start_poll_interval_seconds",
             "bose_state_poll_interval_seconds",

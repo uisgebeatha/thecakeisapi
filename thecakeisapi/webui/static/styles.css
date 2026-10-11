@@ -624,7 +624,8 @@ h1 {
   grid-column: 1 / -1;
 }
 
-.settings-field input {
+.settings-field input,
+.settings-field select {
   width: 100%;
   min-height: 2.75rem;
   border: 1px solid #929ba6;
@@ -641,7 +642,8 @@ h1 {
 }
 
 .settings-dialog button:focus-visible,
-.settings-dialog input:focus-visible {
+.settings-dialog input:focus-visible,
+.settings-dialog select:focus-visible {
   outline-color: color-mix(in srgb, var(--accent) 65%, transparent);
 }
 
@@ -1629,6 +1631,7 @@ button.entry-details-button {
   .settings-close-button,
   .settings-restart-button,
   .settings-field input,
+  .settings-field select,
   .entry-row,
   .entry-details-button,
   .queue-button {

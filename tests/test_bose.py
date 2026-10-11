@@ -978,6 +978,13 @@ class IndependentPlaybackProjectionTests(unittest.TestCase):
                 {"path": None, "name": "BBC Radio 2"},
             )
             self.assertEqual(status["outputs"]["bose"]["external_source"], "TUNEIN")
+            self.assertEqual(
+                status["outputs"]["bose"]["backend"],
+                "bose_aftertouch",
+            )
+            self.assertIsNone(
+                status["outputs"]["bose"]["app_playback_method"],
+            )
 
     def test_observing_owned_bose_while_local_is_active_preserves_ownership(self) -> None:
         with temp_music_app() as app:

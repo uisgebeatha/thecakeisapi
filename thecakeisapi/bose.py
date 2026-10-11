@@ -22,9 +22,10 @@ BOSE_CONTROL_KEY_VALUES = {
 
 @dataclass(frozen=True)
 class BosePlaybackRequest:
-    stream_url: str
+    stream_url: str | None = None
     playback_url: str | None = None
     command: list[str] | None = None
+    content_location: str | None = None
 
 
 @dataclass(frozen=True)
@@ -91,6 +92,17 @@ class BoseNowPlayingStatus:
                 return True
         return False
 
+    def matches_stored_music_track(
+        self,
+        expected_source_account: str,
+        expected_content_location: str,
+    ) -> bool:
+        return (
+            (self.source or "").upper() == "STORED_MUSIC"
+            and self.source_account == expected_source_account
+            and self.content_location == expected_content_location
+        )
+
     @property
     def appears_to_be_custom_radio(self) -> bool:
         normalized_text = self.raw_text.upper()
@@ -138,6 +150,11 @@ class BoseNowPlayingStatus:
             or "INVALID_SOURCE" in self.raw_text.upper()
         )
 
+    @property
+    def appears_to_be_paused(self) -> bool:
+        normalized_play_status = (self.play_status or "").upper()
+        return normalized_play_status in {"PAUSE_STATE", "PAUSED"}
+
 
 @dataclass
 class BosePlaybackState:
@@ -159,13 +176,19 @@ class BosePlaybackState:
     external_playback_active: bool = False
     external_display_name: str | None = None
     external_source: str | None = None
+    playback_method: str = "aftertouch_custom_radio"
+    ownership_source_account: str | None = None
+    ownership_content_location: str | None = None
 
     @property
     def has_app_ownership_context(self) -> bool:
-        return self.ownership_stream_url is not None
+        return self.ownership_stream_url is not None or (
+            self.ownership_source_account is not None
+            and self.ownership_content_location is not None
+        )
 
     def confirm_ownership(self) -> None:
-        if self.ownership_stream_url is not None:
+        if self.has_app_ownership_context:
             self.ownership_confirmed = True
             self.external_playback_active = False
             self.external_display_name = None
@@ -199,6 +222,8 @@ class BosePlaybackState:
         self.last_status_poll_monotonic = None
         self.status_poll_failures = 0
         self.ownership_stream_url = None
+        self.ownership_source_account = None
+        self.ownership_content_location = None
         self.ownership_confirmed = False
         self.external_playback_active = False
         self.external_display_name = None
@@ -235,6 +260,8 @@ class BosePlaybackState:
         self.paused_elapsed_seconds = None
         self.warning = reason
         self.ownership_stream_url = None
+        self.ownership_source_account = None
+        self.ownership_content_location = None
         self.ownership_confirmed = False
         self.external_playback_active = False
         self.external_display_name = None
@@ -283,12 +310,16 @@ class BosePlaybackState:
     def ended(self) -> None:
         self.state = "ended"
         self.ownership_stream_url = None
+        self.ownership_source_account = None
+        self.ownership_content_location = None
         self.ownership_confirmed = False
 
     def error(self, message: str) -> None:
         self.state = "error"
         self.warning = message
         self.ownership_stream_url = None
+        self.ownership_source_account = None
+        self.ownership_content_location = None
         self.ownership_confirmed = False
 
 
@@ -360,6 +391,28 @@ class SoundTouchCliClient:
             "stop",
         ]
 
+    def build_stored_music_track_command(
+        self,
+        name: str,
+        source_account: str,
+        object_id: str,
+    ) -> list[str]:
+        return [
+            self.command,
+            "--host",
+            self.speaker_ip,
+            "library",
+            "play",
+            "--source-account",
+            source_account,
+            "--location",
+            f"{object_id} TRACK",
+            "--type",
+            "track",
+            "--name",
+            name,
+        ]
+
     def build_pause_command(self) -> list[str]:
         return self._build_play_command("pause")
 
@@ -385,6 +438,24 @@ class SoundTouchCliClient:
         return BosePlaybackRequest(
             stream_url=stream_url,
             command=command,
+        )
+
+    def play_stored_music_track(
+        self,
+        name: str,
+        source_account: str,
+        object_id: str,
+    ) -> BosePlaybackRequest:
+        command = self.build_stored_music_track_command(
+            name,
+            source_account,
+            object_id,
+        )
+        self._run_command(command, "STORED_MUSIC playback")
+
+        return BosePlaybackRequest(
+            command=command,
+            content_location=f"{object_id} TRACK",
         )
 
     def stop(self) -> None:
@@ -546,6 +617,28 @@ class BoseNowPlayingClient:
 
             if previous_was_custom_radio and not status.appears_to_be_custom_radio:
                 saw_source_transition = True
+
+            if time.monotonic() >= deadline:
+                return None
+
+            time.sleep(poll_interval_seconds)
+
+    def wait_for_stored_music_track(
+        self,
+        timeout_seconds: float,
+        poll_interval_seconds: float,
+        expected_source_account: str,
+        expected_content_location: str,
+    ) -> BoseNowPlayingStatus | None:
+        deadline = time.monotonic() + timeout_seconds
+
+        while True:
+            status = self.fetch_status()
+            if status.matches_stored_music_track(
+                expected_source_account,
+                expected_content_location,
+            ):
+                return status
 
             if time.monotonic() >= deadline:
                 return None

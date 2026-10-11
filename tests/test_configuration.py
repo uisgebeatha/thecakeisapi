@@ -15,9 +15,19 @@ from thecakeisapi.configuration import (
 )
 from thecakeisapi.main import SettingsUpdateRequest, create_app
 from thecakeisapi.settings import Settings
+from thecakeisapi.settings import (
+    BOSE_PLAYBACK_METHOD_AFTERTOUCH,
+    BOSE_PLAYBACK_METHOD_STORED_MUSIC,
+)
 
 
 class SettingsApiTests(unittest.TestCase):
+    def test_bose_playback_method_defaults_to_aftertouch_custom_radio(self) -> None:
+        self.assertEqual(
+            Settings().bose_playback_method,
+            BOSE_PLAYBACK_METHOD_AFTERTOUCH,
+        )
+
     def test_get_only_exposes_supported_editable_fields(self) -> None:
         with temporary_settings_app() as (app, _config_path):
             response = route_endpoint(app, "/api/settings", "GET")()
@@ -42,6 +52,14 @@ class SettingsApiTests(unittest.TestCase):
             self.assertIn("Restart", response["message"])
             self.assertEqual(response["settings"]["bose_speaker_ip"], "bose-speaker.local")
             self.assertEqual(saved_config["bose_speaker_ip"], "bose-speaker.local")
+            self.assertEqual(
+                saved_config["bose_playback_method"],
+                BOSE_PLAYBACK_METHOD_STORED_MUSIC,
+            )
+            self.assertEqual(
+                saved_config["bose_stored_music_source_account"],
+                "test-account/0",
+            )
             self.assertEqual(saved_config["bose_state_poll_interval_seconds"], 12.5)
             self.assertTrue(
                 route_endpoint(app, "/api/settings", "GET")()["restart_required"],
@@ -55,6 +73,10 @@ class SettingsApiTests(unittest.TestCase):
             self.assertEqual(saved_config["music_root"], "/media/music")
             self.assertEqual(saved_config["private_token"], "do-not-expose")
             self.assertEqual(saved_config["bose_api_port"], 8090)
+            self.assertEqual(
+                saved_config["minidlna_database_path"],
+                "/var/cache/minidlna/files.db",
+            )
 
     def test_invalid_address_and_urls_return_useful_errors(self) -> None:
         invalid_values = (
@@ -82,6 +104,42 @@ class SettingsApiTests(unittest.TestCase):
                     valid_update_request(
                         bose_state_poll_interval_seconds=interval,
                     )
+
+    def test_invalid_bose_playback_method_is_rejected(self) -> None:
+        with self.assertRaises(ValidationError):
+            valid_update_request(bose_playback_method="unsupported")
+
+        with self.assertRaisesRegex(ValueError, "bose_playback_method"):
+            Settings(bose_playback_method="unsupported").validate()
+
+    def test_native_bose_configuration_loads_from_config_file(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            config_path = Path(temp_dir) / "config.json"
+            config_path.write_text(
+                json.dumps(
+                    {
+                        "bose_playback_method": BOSE_PLAYBACK_METHOD_STORED_MUSIC,
+                        "bose_stored_music_source_account": "stored-account/0",
+                        "minidlna_database_path": "/srv/minidlna/files.db",
+                    },
+                ),
+                encoding="utf-8",
+            )
+
+            settings = Settings.load(config_path)
+
+        self.assertEqual(
+            settings.bose_playback_method,
+            BOSE_PLAYBACK_METHOD_STORED_MUSIC,
+        )
+        self.assertEqual(
+            settings.bose_stored_music_source_account,
+            "stored-account/0",
+        )
+        self.assertEqual(
+            settings.minidlna_database_path,
+            Path("/srv/minidlna/files.db"),
+        )
 
     def test_health_endpoint_keeps_central_version(self) -> None:
         with temporary_settings_app() as (app, _config_path):
@@ -141,6 +199,8 @@ def valid_update_request(**overrides) -> SettingsUpdateRequest:
         "bose_speaker_ip": "192.168.42.101",
         "aftertouch_base_url": "http://aftertouch.local:8001",
         "soundtouch_cli_command": "/usr/local/bin/soundtouch-cli",
+        "bose_playback_method": BOSE_PLAYBACK_METHOD_STORED_MUSIC,
+        "bose_stored_music_source_account": "test-account/0",
         "public_base_url": "http://pi.local:8000",
         "bose_state_poll_interval_seconds": 5.0,
     }
@@ -166,6 +226,7 @@ class temporary_settings_app:
                 {
                     "music_root": "/media/music",
                     "bose_api_port": 8090,
+                    "minidlna_database_path": "/var/cache/minidlna/files.db",
                     "private_token": "do-not-expose",
                 },
             ),

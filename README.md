@@ -164,6 +164,9 @@ Example:
   "aftertouch_base_url": "http://192.168.42.190:8001",
   "public_base_url": "http://192.168.42.190:8000",
   "soundtouch_cli_command": "soundtouch-cli",
+  "bose_playback_method": "aftertouch_custom_radio",
+  "bose_stored_music_source_account": "4d696e69-444c-164e-9d41-e45f01636b02/0",
+  "minidlna_database_path": "/var/cache/minidlna/files.db",
   "bose_start_confirm_timeout_seconds": 8.0,
   "bose_start_poll_interval_seconds": 0.5,
   "bose_state_poll_interval_seconds": 5.0,
@@ -176,9 +179,15 @@ Example:
 
 `soundtouch_cli_command` may be a command available in `PATH`, such as `soundtouch-cli`, or a full executable path.
 
+`bose_playback_method` defaults to `aftertouch_custom_radio`. The optional
+`stored_music_experimental` method uses the configured STORED_MUSIC source
+account and read-only MiniDLNA database path for individual-track playback.
+Native ownership is confirmed by source, account, and object location; another
+controller selecting that exact same tuple cannot be distinguished.
+
 Pi-managed radio presets are stored in `radio_presets.json` beside the effective `config.json`. With the standard service layout this is `/home/controller/thecakeisapi/radio_presets.json`; if `THECAKEISAPI_CONFIG` points to another location, the preset file follows that configuration file's directory. The file is created on the first preset change, uses atomic replacement, and remains uncommitted. It is deliberately not stored under removable `/mnt/music` storage.
 
-Open Settings from the gear button in the application header. The dialog can edit the Bose speaker address, AfterTouch base URL, `soundtouch-cli` command/path, public audio base URL, and Bose status polling interval. Saves use an atomic replacement of `config.json` and preserve every unrelated configuration value.
+Open Settings from the gear button in the application header. The dialog can edit the Bose speaker address, playback method, STORED_MUSIC source account, AfterTouch base URL, `soundtouch-cli` command/path, public audio base URL, and Bose status polling interval. The MiniDLNA database path remains configuration-only. Saves use an atomic replacement of `config.json` and preserve every unrelated configuration value.
 
 As of v0.4.6, Configuration, read-only Component Status, and Save/restart actions use distinct compact sections on desktop and mobile without changing settings behavior.
 

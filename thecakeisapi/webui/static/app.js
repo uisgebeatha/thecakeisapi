@@ -1243,6 +1243,10 @@ async function loadEditableSettings() {
 
 function populateSettingsForm(settings) {
   settingsForm.elements.bose_speaker_ip.value = settings.bose_speaker_ip || "";
+  settingsForm.elements.bose_playback_method.value =
+    settings.bose_playback_method || "aftertouch_custom_radio";
+  settingsForm.elements.bose_stored_music_source_account.value =
+    settings.bose_stored_music_source_account || "";
   settingsForm.elements.aftertouch_base_url.value = settings.aftertouch_base_url || "";
   settingsForm.elements.soundtouch_cli_command.value = settings.soundtouch_cli_command || "";
   settingsForm.elements.public_base_url.value = settings.public_base_url || "";
@@ -1258,6 +1262,10 @@ async function saveSettings(event) {
 
   const payload = {
     bose_speaker_ip: optionalSettingValue("bose_speaker_ip"),
+    bose_playback_method: settingsForm.elements.bose_playback_method.value,
+    bose_stored_music_source_account: optionalSettingValue(
+      "bose_stored_music_source_account",
+    ),
     aftertouch_base_url: optionalSettingValue("aftertouch_base_url"),
     soundtouch_cli_command: settingsForm.elements.soundtouch_cli_command.value.trim(),
     public_base_url: optionalSettingValue("public_base_url"),

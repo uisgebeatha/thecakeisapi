@@ -230,6 +230,17 @@
               <span>Bose speaker address</span>
               <input id="setting-bose-speaker-ip" name="bose_speaker_ip" type="text" autocomplete="off" spellcheck="false" placeholder="192.168.42.101">
             </label>
+            <label class="settings-field" for="setting-bose-playback-method">
+              <span>Bose playback method</span>
+              <select id="setting-bose-playback-method" name="bose_playback_method">
+                <option value="aftertouch_custom_radio">AfterTouch / Custom Radio</option>
+                <option value="stored_music_experimental">Native STORED_MUSIC (Experimental)</option>
+              </select>
+            </label>
+            <label class="settings-field settings-field-wide" for="setting-bose-stored-music-source-account">
+              <span>STORED_MUSIC source account</span>
+              <input id="setting-bose-stored-music-source-account" name="bose_stored_music_source_account" type="text" autocomplete="off" spellcheck="false" placeholder="4d696e69-444c-164e-9d41-e45f01636b02/0">
+            </label>
             <label class="settings-field" for="setting-aftertouch-base-url">
               <span>AfterTouch base URL</span>
               <input id="setting-aftertouch-base-url" name="aftertouch_base_url" type="url" autocomplete="off" spellcheck="false" placeholder="http://bose-controller.local">

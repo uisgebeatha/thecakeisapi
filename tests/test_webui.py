@@ -414,6 +414,8 @@ class WebUiTransportTests(unittest.TestCase):
         self.assertIn('id="settings-dialog"', index_html)
         for field_name in (
             "bose_speaker_ip",
+            "bose_playback_method",
+            "bose_stored_music_source_account",
             "aftertouch_base_url",
             "soundtouch_cli_command",
             "public_base_url",
@@ -422,6 +424,8 @@ class WebUiTransportTests(unittest.TestCase):
             self.assertIn(f'name="{field_name}"', index_html)
         self.assertNotIn('name="music_root"', index_html)
         self.assertNotIn('name="bose_api_port"', index_html)
+        self.assertNotIn('name="minidlna_database_path"', index_html)
+        self.assertIn("Native STORED_MUSIC (Experimental)", index_html)
 
     def test_settings_dialog_separates_configuration_status_and_actions(self) -> None:
         index_html = INDEX_HTML.read_text(encoding="utf-8")

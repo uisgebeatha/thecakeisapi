@@ -6,13 +6,15 @@ from pathlib import Path
 from threading import Lock
 from typing import Any
 
-from .settings import Settings
+from .settings import BOSE_PLAYBACK_METHODS, Settings
 
 
 EDITABLE_SETTING_KEYS = (
     "bose_speaker_ip",
     "aftertouch_base_url",
     "soundtouch_cli_command",
+    "bose_playback_method",
+    "bose_stored_music_source_account",
     "public_base_url",
     "bose_state_poll_interval_seconds",
 )
@@ -70,6 +72,8 @@ def editable_settings_from(settings: Settings) -> dict[str, str | float | None]:
         "bose_speaker_ip": settings.bose_speaker_ip,
         "aftertouch_base_url": settings.aftertouch_base_url,
         "soundtouch_cli_command": settings.soundtouch_cli_command,
+        "bose_playback_method": settings.bose_playback_method,
+        "bose_stored_music_source_account": settings.bose_stored_music_source_account,
         "public_base_url": settings.public_base_url,
         "bose_state_poll_interval_seconds": settings.bose_state_poll_interval_seconds,
     }
@@ -86,6 +90,10 @@ def _validated_editable_settings(
         "bose_speaker_ip": _optional_trimmed_string(values["bose_speaker_ip"]),
         "aftertouch_base_url": _optional_trimmed_string(values["aftertouch_base_url"]),
         "soundtouch_cli_command": _required_command(values["soundtouch_cli_command"]),
+        "bose_playback_method": _playback_method(values["bose_playback_method"]),
+        "bose_stored_music_source_account": _optional_trimmed_string(
+            values["bose_stored_music_source_account"],
+        ),
         "public_base_url": _optional_trimmed_string(values["public_base_url"]),
         "bose_state_poll_interval_seconds": _poll_interval(
             values["bose_state_poll_interval_seconds"],
@@ -118,6 +126,15 @@ def _required_command(value: str | float | None) -> str:
             "soundtouch_cli_command must be a command name or executable path",
         )
     return value.strip()
+
+
+def _playback_method(value: str | float | None) -> str:
+    if not isinstance(value, str) or value not in BOSE_PLAYBACK_METHODS:
+        allowed_methods = ", ".join(sorted(BOSE_PLAYBACK_METHODS))
+        raise SettingsPersistenceError(
+            f"bose_playback_method must be one of: {allowed_methods}",
+        )
+    return value
 
 
 def _poll_interval(value: str | float | None) -> float:
