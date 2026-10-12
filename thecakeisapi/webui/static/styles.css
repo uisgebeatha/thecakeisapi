@@ -188,16 +188,33 @@ h1 {
 }
 
 .bose-presets-dialog-body {
+  position: relative;
   padding: 0.75rem;
 }
 
-.bose-presets-message {
-  min-height: 1.1rem;
-  margin-bottom: 0.65rem;
+.bose-error-toast {
+  position: absolute;
+  z-index: 2;
+  top: 0.45rem;
+  left: 50%;
+  width: max-content;
+  max-width: calc(100% - 1.5rem);
+  margin: 0;
+  transform: translateX(-50%);
+  border: 1px solid #b75555;
+  border-radius: 0.35rem;
+  padding: 0.35rem 0.55rem;
+  background: var(--surface);
+  color: #923838;
+  box-shadow: 0 0.2rem 0.6rem rgba(20, 24, 28, 0.22);
   font-size: 0.78rem;
+  line-height: 1.25;
+  overflow-wrap: anywhere;
+  pointer-events: none;
+  text-align: center;
 }
 
-.bose-presets-message:empty {
+.bose-error-toast[hidden] {
   display: none;
 }
 
@@ -1611,7 +1628,8 @@ button.entry-details-button {
   }
 
   .status[data-state="error"],
-  .message[data-state="error"] {
+  .message[data-state="error"],
+  .bose-error-toast {
     color: #ee9c9c;
   }
 

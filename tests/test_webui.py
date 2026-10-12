@@ -302,7 +302,6 @@ class WebUiTransportTests(unittest.TestCase):
             styles_css,
         )
         self.assertNotIn(".output-option:has(input:checked)", styles_css)
-        self.assertNotIn("pointer-events: none", styles_css)
 
     def test_application_version_has_one_runtime_source(self) -> None:
         package_init = PACKAGE_INIT.read_text(encoding="utf-8")
@@ -692,6 +691,39 @@ class WebUiBosePresetTests(unittest.TestCase):
         self.assertIn('aria-label="Select Bose AUX source"', dialog_html)
         self.assertIn('title="AUX"', dialog_html)
 
+    def test_bose_failures_use_an_accessible_non_flow_dialog_toast(self) -> None:
+        index_html = INDEX_HTML.read_text(encoding="utf-8")
+        app_js = APP_JS.read_text(encoding="utf-8")
+        styles_css = STYLES_CSS.read_text(encoding="utf-8")
+        dialog_html = index_html.split(
+            '<dialog id="bose-presets-dialog"',
+            1,
+        )[1].split("</dialog>", 1)[0]
+
+        self.assertIn(
+            'id="bose-error-toast" class="bose-error-toast" role="alert" '
+            'aria-live="assertive" aria-atomic="true" hidden',
+            dialog_html,
+        )
+        self.assertRegex(
+            styles_css,
+            r"\.bose-presets-dialog-body\s*\{[^}]*position: relative;",
+        )
+        self.assertRegex(
+            styles_css,
+            r"\.bose-error-toast\s*\{[^}]*position: absolute;[^}]*"
+            r"z-index: 2;[^}]*pointer-events: none;",
+        )
+        self.assertRegex(
+            styles_css,
+            r"\.bose-error-toast\[hidden\]\s*\{[^}]*display: none;",
+        )
+        self.assertIn("function showBoseErrorToast(message)", app_js)
+        self.assertIn("BOSE_ERROR_TOAST_TIMEOUT_MS = 5000", app_js)
+        self.assertIn("window.setTimeout(", app_js)
+        self.assertIn("clearBoseErrorToast,", app_js)
+        self.assertNotIn("bosePresetsMessage", app_js)
+
     def test_remote_controls_post_one_allowlisted_action_per_click(self) -> None:
         app_js = APP_JS.read_text(encoding="utf-8")
 
@@ -725,7 +757,7 @@ class WebUiBosePresetTests(unittest.TestCase):
         self.assertIn('if (action === "power") {', control_handler)
         self.assertIn("refreshPlaybackStatus();", control_handler)
         self.assertIn(
-            "bosePresetsMessage.textContent = `Could not control Bose: ${error.message}`;",
+            "showBoseErrorToast(`Could not control Bose: ${error.message}`);",
             control_handler,
         )
 
@@ -760,6 +792,11 @@ class WebUiBosePresetTests(unittest.TestCase):
         )
         self.assertIn('method: "POST"', source_handler)
         self.assertIn("refreshPlaybackStatus();", source_handler)
+        self.assertNotIn("Selecting ${source}", source_handler)
+        self.assertIn(
+            "showBoseErrorToast(`Could not select ${source}: ${error.message}`);",
+            source_handler,
+        )
         self.assertEqual(
             app_js.count(
                 'boseBluetoothButton.addEventListener("click", () => '
@@ -790,6 +827,10 @@ class WebUiBosePresetTests(unittest.TestCase):
 
     def test_presets_are_loaded_only_when_the_dialog_opens(self) -> None:
         app_js = APP_JS.read_text(encoding="utf-8")
+        loader = app_js.split("async function loadBosePresets()", 1)[1].split(
+            "function renderBosePresets(presets)",
+            1,
+        )[0]
 
         self.assertEqual(app_js.count('fetch("/api/player/bose/presets")'), 1)
         self.assertIn("bosePresetsDialog.showModal();", app_js)
@@ -798,9 +839,10 @@ class WebUiBosePresetTests(unittest.TestCase):
         self.assertIn('button.disabled = !available;', app_js)
         self.assertIn('resetBosePresetButtons("Unavailable");', app_js)
         self.assertNotIn("physical presets available", app_js)
+        self.assertNotIn('"Loading presets..."', loader)
+        self.assertNotIn("No physical presets are assigned", loader)
         self.assertIn(
-            'bosePresetsMessage.textContent = availableCount ? "" : '
-            '"No physical presets are assigned";',
+            "showBoseErrorToast(`Could not load presets: ${error.message}`);",
             app_js,
         )
 
@@ -815,6 +857,11 @@ class WebUiBosePresetTests(unittest.TestCase):
         self.assertIn("renderPlaybackState(data);", app_js)
         self.assertIn("bosePresetsDialog.close();", app_js)
         self.assertIn("refreshPlaybackStatus();", app_js)
+        self.assertNotIn("Selecting preset ${presetId}", app_js)
+        self.assertIn(
+            "showBoseErrorToast(`Could not select preset ${presetId}: ${error.message}`);",
+            app_js,
+        )
 
     def test_popup_reuses_external_metadata_for_current_item(self) -> None:
         index_html = INDEX_HTML.read_text(encoding="utf-8")

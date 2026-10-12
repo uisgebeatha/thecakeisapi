@@ -32,7 +32,7 @@ const radioPresetSaveButton = document.querySelector("#radio-preset-save-button"
 const radioPresetCancelButton = document.querySelector("#radio-preset-cancel-button");
 const bosePresetsButton = document.querySelector("#bose-presets-button");
 const bosePresetsDialog = document.querySelector("#bose-presets-dialog");
-const bosePresetsMessage = document.querySelector("#bose-presets-message");
+const boseErrorToast = document.querySelector("#bose-error-toast");
 const bosePresetButtons = [...document.querySelectorAll(".bose-preset-button")];
 const boseCurrentItemTitle = document.querySelector("#bose-current-item-title");
 const bosePowerButton = document.querySelector("#bose-power-button");
@@ -62,6 +62,7 @@ let lastPlaybackState = null;
 let outputSelectionInitialized = false;
 let presetActivationInProgress = false;
 let boseControlInProgress = false;
+let boseErrorToastTimeoutId = null;
 let radioPresets = [];
 let editingRadioPresetId = null;
 let radioPresetRequestInProgress = false;
@@ -73,6 +74,7 @@ const PLAY_ENDPOINTS = Object.freeze({
 const RESTART_HEALTH_INITIAL_DELAY_MS = 2000;
 const RESTART_HEALTH_POLL_INTERVAL_MS = 1500;
 const RESTART_HEALTH_TIMEOUT_MS = 45000;
+const BOSE_ERROR_TOAST_TIMEOUT_MS = 5000;
 
 async function loadApp() {
   try {
@@ -1043,14 +1045,13 @@ function openBosePresets() {
   }
 
   boseCurrentItemTitle.textContent = currentBoseItemTitle();
+  clearBoseErrorToast();
   bosePresetsDialog.showModal();
   bosePresetsDialog.focus();
   loadBosePresets();
 }
 
 async function loadBosePresets() {
-  bosePresetsMessage.textContent = "Loading presets...";
-  bosePresetsMessage.dataset.state = "";
   resetBosePresetButtons("Loading");
 
   try {
@@ -1061,12 +1062,10 @@ async function loadBosePresets() {
     }
 
     renderBosePresets(data.presets || []);
-    const availableCount = (data.presets || []).filter((preset) => preset.available).length;
-    bosePresetsMessage.textContent = availableCount ? "" : "No physical presets are assigned";
+    clearBoseErrorToast();
   } catch (error) {
     resetBosePresetButtons("Unavailable");
-    bosePresetsMessage.textContent = `Could not load presets: ${error.message}`;
-    bosePresetsMessage.dataset.state = "error";
+    showBoseErrorToast(`Could not load presets: ${error.message}`);
   }
 }
 
@@ -1117,8 +1116,6 @@ async function activateBosePreset(button) {
   const presetId = Number(button.dataset.presetId);
   presetActivationInProgress = true;
   setBosePresetButtonsBusy(true);
-  bosePresetsMessage.textContent = `Selecting preset ${presetId}...`;
-  bosePresetsMessage.dataset.state = "";
 
   try {
     const response = await fetch(`/api/player/bose/presets/${presetId}/activate`, {
@@ -1131,11 +1128,11 @@ async function activateBosePreset(button) {
 
     lastPlaybackState = data;
     renderPlaybackState(data);
+    clearBoseErrorToast();
     bosePresetsDialog.close();
     refreshPlaybackStatus();
   } catch (error) {
-    bosePresetsMessage.textContent = `Could not select preset ${presetId}: ${error.message}`;
-    bosePresetsMessage.dataset.state = "error";
+    showBoseErrorToast(`Could not select preset ${presetId}: ${error.message}`);
   } finally {
     presetActivationInProgress = false;
     setBosePresetButtonsBusy(false);
@@ -1182,12 +1179,12 @@ async function sendBoseControlAction(action) {
 
     lastPlaybackState = data;
     renderPlaybackState(data);
+    clearBoseErrorToast();
     if (action === "power") {
       refreshPlaybackStatus();
     }
   } catch (error) {
-    bosePresetsMessage.textContent = `Could not control Bose: ${error.message}`;
-    bosePresetsMessage.dataset.state = "error";
+    showBoseErrorToast(`Could not control Bose: ${error.message}`);
   } finally {
     boseControlInProgress = false;
     setBoseControlButtonsBusy(false);
@@ -1201,8 +1198,6 @@ async function selectBoseSource(source) {
 
   boseControlInProgress = true;
   setBoseControlButtonsBusy(true);
-  bosePresetsMessage.textContent = `Selecting ${source}...`;
-  bosePresetsMessage.dataset.state = "";
 
   try {
     const response = await fetch(`/api/player/bose/source/${source}`, {
@@ -1216,15 +1211,33 @@ async function selectBoseSource(source) {
     lastPlaybackState = data;
     renderPlaybackState(data);
     boseCurrentItemTitle.textContent = currentBoseItemTitle();
-    bosePresetsMessage.textContent = "";
+    clearBoseErrorToast();
     refreshPlaybackStatus();
   } catch (error) {
-    bosePresetsMessage.textContent = `Could not select ${source}: ${error.message}`;
-    bosePresetsMessage.dataset.state = "error";
+    showBoseErrorToast(`Could not select ${source}: ${error.message}`);
   } finally {
     boseControlInProgress = false;
     setBoseControlButtonsBusy(false);
   }
+}
+
+function clearBoseErrorToast() {
+  if (boseErrorToastTimeoutId !== null) {
+    window.clearTimeout(boseErrorToastTimeoutId);
+    boseErrorToastTimeoutId = null;
+  }
+  boseErrorToast.hidden = true;
+  boseErrorToast.textContent = "";
+}
+
+function showBoseErrorToast(message) {
+  clearBoseErrorToast();
+  boseErrorToast.hidden = false;
+  boseErrorToast.textContent = message;
+  boseErrorToastTimeoutId = window.setTimeout(
+    clearBoseErrorToast,
+    BOSE_ERROR_TOAST_TIMEOUT_MS,
+  );
 }
 
 function setBoseControlButtonsBusy(busy) {
