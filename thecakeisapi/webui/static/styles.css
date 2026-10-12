@@ -216,11 +216,11 @@ h1 {
   gap: 0.5rem;
 }
 
-.bose-future-control:first-child {
+.bose-future-controls > .bose-future-control:first-child {
   align-self: end;
 }
 
-.bose-future-control:last-child {
+.bose-future-controls > .bose-future-control:last-child {
   align-self: start;
 }
 
@@ -262,6 +262,17 @@ h1 {
 .bose-source-control {
   align-content: center;
   gap: 0.1rem;
+  min-height: 0;
+  height: 100%;
+  padding-top: 0.15rem;
+  padding-bottom: 0.15rem;
+}
+
+.bose-source-controls {
+  display: grid;
+  grid-template-rows: repeat(2, minmax(0, 1fr));
+  align-self: stretch;
+  gap: 0.25rem;
 }
 
 .bose-source-control span {

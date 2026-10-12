@@ -140,12 +140,17 @@
                 <path d="M7.1 5.8a8 8 0 1 0 9.8 0"></path>
               </svg>
             </button>
-            <button class="bose-future-control bose-source-control" type="button" disabled aria-label="Bluetooth and AUX unavailable" title="Bluetooth and AUX unavailable">
-              <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false">
-                <path d="m8 7 8 10V7L8 17l8-10"></path>
-              </svg>
-              <span>AUX</span>
-            </button>
+            <div class="bose-source-controls">
+              <button id="bose-bluetooth-button" class="bose-future-control bose-source-control" type="button" aria-label="Select Bose Bluetooth source" title="Bluetooth">
+                <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+                  <path d="m8 7 8 10V7L8 17l8-10"></path>
+                </svg>
+                <span>BT</span>
+              </button>
+              <button id="bose-aux-button" class="bose-future-control bose-source-control" type="button" aria-label="Select Bose AUX source" title="AUX">
+                <span>AUX</span>
+              </button>
+            </div>
           </div>
 
           <div class="bose-preset-grid" aria-label="Physical presets">

@@ -663,7 +663,7 @@ class WebUiBosePresetTests(unittest.TestCase):
         )
         self.assertIn("updateBosePresetsLauncher();", app_js)
 
-    def test_dialog_enables_power_and_volume_but_keeps_aux_disabled(self) -> None:
+    def test_dialog_has_separate_enabled_power_bluetooth_aux_and_volume_controls(self) -> None:
         index_html = INDEX_HTML.read_text(encoding="utf-8")
         dialog_html = index_html.split(
             '<dialog id="bose-presets-dialog"',
@@ -674,18 +674,23 @@ class WebUiBosePresetTests(unittest.TestCase):
         for preset_id in range(1, 7):
             self.assertIn(f'data-preset-id="{preset_id}" disabled', dialog_html)
         self.assertEqual(dialog_html.count('class="bose-future-control"'), 3)
+        self.assertEqual(
+            dialog_html.count('class="bose-future-control bose-source-control"'),
+            2,
+        )
         self.assertIn('id="bose-power-button"', dialog_html)
+        self.assertIn('id="bose-bluetooth-button"', dialog_html)
+        self.assertIn('id="bose-aux-button"', dialog_html)
         self.assertIn('id="bose-volume-up-button"', dialog_html)
         self.assertIn('id="bose-volume-down-button"', dialog_html)
         self.assertNotRegex(
             dialog_html,
-            r'id="bose-(?:power|volume-up|volume-down)-button"[^>]*disabled',
+            r'id="bose-(?:power|bluetooth|aux|volume-up|volume-down)-button"[^>]*disabled',
         )
-        self.assertIn('aria-label="Bluetooth and AUX unavailable"', dialog_html)
-        self.assertRegex(
-            dialog_html,
-            r'class="bose-future-control bose-source-control"[^>]*disabled',
-        )
+        self.assertIn('aria-label="Select Bose Bluetooth source"', dialog_html)
+        self.assertIn('title="Bluetooth"', dialog_html)
+        self.assertIn('aria-label="Select Bose AUX source"', dialog_html)
+        self.assertIn('title="AUX"', dialog_html)
 
     def test_remote_controls_post_one_allowlisted_action_per_click(self) -> None:
         app_js = APP_JS.read_text(encoding="utf-8")
@@ -741,6 +746,34 @@ class WebUiBosePresetTests(unittest.TestCase):
             1,
         )
         self.assertIn('return knownActivePlayback ? "Turn Bose off?" : "Toggle Bose power?";', app_js)
+
+    def test_source_buttons_use_shared_strict_source_selection_function(self) -> None:
+        app_js = APP_JS.read_text(encoding="utf-8")
+        source_handler = app_js.split(
+            "async function selectBoseSource(source)",
+            1,
+        )[1].split("function setBoseControlButtonsBusy", 1)[0]
+
+        self.assertEqual(
+            source_handler.count('fetch(`/api/player/bose/source/${source}`, {'),
+            1,
+        )
+        self.assertIn('method: "POST"', source_handler)
+        self.assertIn("refreshPlaybackStatus();", source_handler)
+        self.assertEqual(
+            app_js.count(
+                'boseBluetoothButton.addEventListener("click", () => '
+                'selectBoseSource("bluetooth"));'
+            ),
+            1,
+        )
+        self.assertEqual(
+            app_js.count(
+                'boseAuxButton.addEventListener("click", () => '
+                'selectBoseSource("aux"));'
+            ),
+            1,
+        )
 
     def test_dialog_has_no_visible_header_or_close_button(self) -> None:
         index_html = INDEX_HTML.read_text(encoding="utf-8")
@@ -836,11 +869,19 @@ class WebUiBosePresetTests(unittest.TestCase):
         )
         self.assertRegex(
             styles_css,
-            r"\.bose-future-control:first-child\s*\{[^}]*align-self: end;",
+            r"\.bose-future-controls > \.bose-future-control:first-child\s*\{"
+            r"[^}]*align-self: end;",
         )
         self.assertRegex(
             styles_css,
-            r"\.bose-future-control:last-child\s*\{[^}]*align-self: start;",
+            r"\.bose-future-controls > \.bose-future-control:last-child\s*\{"
+            r"[^}]*align-self: start;",
+        )
+        self.assertRegex(
+            styles_css,
+            r"\.bose-source-controls\s*\{[^}]*"
+            r"grid-template-rows: repeat\(2, minmax\(0, 1fr\)\);[^}]*"
+            r"gap: 0\.25rem;",
         )
         self.assertRegex(
             styles_css,

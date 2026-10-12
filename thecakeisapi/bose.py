@@ -3,6 +3,7 @@ import binascii
 import subprocess
 import time
 from dataclasses import dataclass
+from enum import Enum
 from xml.etree import ElementTree
 from urllib.error import URLError
 from urllib.parse import unquote, urlencode, urljoin
@@ -18,6 +19,30 @@ BOSE_CONTROL_KEY_VALUES = {
     "volume-down": "VOLUME_DOWN",
     "power": "POWER",
 }
+
+
+class BoseSource(str, Enum):
+    AUX = "aux"
+    BLUETOOTH = "bluetooth"
+
+    @property
+    def native_name(self) -> str:
+        return {
+            BoseSource.AUX: "AUX",
+            BoseSource.BLUETOOTH: "BLUETOOTH",
+        }[self]
+
+    @property
+    def display_name(self) -> str:
+        if self is BoseSource.AUX:
+            return "AUX"
+        return "Bluetooth"
+
+    @property
+    def selection_xml(self) -> bytes:
+        if self is BoseSource.AUX:
+            return b'<ContentItem source="AUX" sourceAccount="AUX"></ContentItem>'
+        return b'<ContentItem source="BLUETOOTH"></ContentItem>'
 
 
 @dataclass(frozen=True)
@@ -506,6 +531,7 @@ class BoseNowPlayingClient:
     ) -> None:
         self.presets_url = f"http://{speaker_ip}:{api_port}/presets"
         self.key_url = f"http://{speaker_ip}:{api_port}/key"
+        self.select_url = f"http://{speaker_ip}:{api_port}/select"
         self.now_playing_url = f"http://{speaker_ip}:{api_port}/now_playing"
         self.timeout_seconds = timeout_seconds
 
@@ -544,6 +570,26 @@ class BoseNowPlayingClient:
             raise BosePlaybackError(f"Unsupported Bose control action: {action}")
 
         self._send_key(key_name, f"Bose {action} action")
+
+    def select_source(self, source: BoseSource) -> None:
+        try:
+            selected_source = BoseSource(source)
+        except ValueError as error:
+            raise BosePlaybackError(f"Unsupported Bose source: {source}") from error
+
+        request = Request(
+            self.select_url,
+            data=selected_source.selection_xml,
+            headers={"Content-Type": "application/xml"},
+            method="POST",
+        )
+        try:
+            with urlopen(request, timeout=self.timeout_seconds) as response:
+                response.read()
+        except (URLError, OSError) as error:
+            raise BosePlaybackError(
+                f"Bose {selected_source.native_name} selection failed: {error}",
+            ) from error
 
     def _send_key(self, key_name: str, error_context: str) -> None:
         for key_state in ("press", "release"):

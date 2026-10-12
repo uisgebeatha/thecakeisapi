@@ -17,6 +17,7 @@ from thecakeisapi.bose import (
     BosePlaybackRequest,
     BosePlaybackState,
     BosePlaybackError,
+    BoseSource,
     SoundTouchCliClient,
     build_library_stream_url,
     parse_now_playing,
@@ -33,6 +34,7 @@ from thecakeisapi.main import (
     _poll_bose_playback_state,
     _resume_bose_playback,
     _select_bose_preset,
+    _select_bose_source,
     _stop_bose_playback,
     _sync_bose_playback,
     _sync_finished_playback,
@@ -512,6 +514,48 @@ class BosePresetTests(unittest.TestCase):
     def test_invalid_control_action_is_rejected_before_transport(self, urlopen_mock) -> None:
         with self.assertRaisesRegex(BosePlaybackError, "Unsupported Bose control action"):
             BoseNowPlayingClient("192.168.42.101").send_control_action("mute")
+
+        urlopen_mock.assert_not_called()
+
+    @patch("thecakeisapi.bose.urlopen")
+    def test_aux_selection_posts_fixed_source_and_account(self, urlopen_mock) -> None:
+        urlopen_mock.return_value.__enter__.return_value.read.return_value = (
+            b"<status>OK</status>"
+        )
+
+        BoseNowPlayingClient("192.168.42.101").select_source(BoseSource.AUX)
+
+        request = urlopen_mock.call_args.args[0]
+        self.assertEqual(request.full_url, "http://192.168.42.101:8090/select")
+        self.assertEqual(request.get_method(), "POST")
+        self.assertEqual(request.headers["Content-type"], "application/xml")
+        self.assertEqual(
+            request.data.decode("utf-8"),
+            '<ContentItem source="AUX" sourceAccount="AUX"></ContentItem>',
+        )
+
+    @patch("thecakeisapi.bose.urlopen")
+    def test_bluetooth_selection_posts_source_without_account(self, urlopen_mock) -> None:
+        urlopen_mock.return_value.__enter__.return_value.read.return_value = (
+            b"<status>OK</status>"
+        )
+
+        BoseNowPlayingClient("192.168.42.101").select_source(
+            BoseSource.BLUETOOTH,
+        )
+
+        request = urlopen_mock.call_args.args[0]
+        self.assertEqual(request.full_url, "http://192.168.42.101:8090/select")
+        self.assertEqual(
+            request.data.decode("utf-8"),
+            '<ContentItem source="BLUETOOTH"></ContentItem>',
+        )
+        self.assertNotIn("sourceAccount", request.data.decode("utf-8"))
+
+    @patch("thecakeisapi.bose.urlopen")
+    def test_invalid_source_is_rejected_before_transport(self, urlopen_mock) -> None:
+        with self.assertRaisesRegex(BosePlaybackError, "Unsupported Bose source"):
+            BoseNowPlayingClient("192.168.42.101").select_source("wifi")
 
         urlopen_mock.assert_not_called()
 
@@ -1519,7 +1563,7 @@ class BosePresetApiTests(unittest.TestCase):
 
 
 class BoseControlApiTests(unittest.TestCase):
-    def test_allowlisted_controls_preserve_queue_and_playback_ownership(self) -> None:
+    def test_volume_controls_preserve_queue_and_playback_ownership(self) -> None:
         with temp_music_app() as app:
             app.state.bose_playback_queue.set_tracks(
                 [
@@ -1538,12 +1582,12 @@ class BoseControlApiTests(unittest.TestCase):
                 "POST",
             )
 
-            for action in ("volume-up", "volume-down", "power"):
+            for action in ("volume-up", "volume-down"):
                 status = endpoint(action)
 
             self.assertEqual(
                 control_client.control_actions,
-                ["volume-up", "volume-down", "power"],
+                ["volume-up", "volume-down"],
             )
             self.assertEqual(
                 [track["path"] for track in status["queue"]],
@@ -1554,8 +1598,25 @@ class BoseControlApiTests(unittest.TestCase):
             self.assertTrue(app.state.bose_playback_state.has_app_ownership_context)
             self.assertFalse(app.state.bose_playback_state.external_playback_active)
 
-    def test_power_control_does_not_create_playback_ownership(self) -> None:
+    def test_power_preserves_bose_queue_and_cursor_and_clears_ownership(self) -> None:
         with temp_music_app() as app:
+            app.state.local_player = FakeLocalPlayer(
+                state="playing",
+                path=app.state.settings.music_root / "third.mp3",
+            )
+            app.state.local_playback_queue.set_tracks(
+                [QueueTrack(path="third.mp3", name="third.mp3")],
+                "third.mp3",
+            )
+            app.state.bose_playback_queue.set_tracks(
+                [
+                    QueueTrack(path="first.mp3", name="first.mp3"),
+                    QueueTrack(path="second.mp3", name="second.mp3"),
+                ],
+                "second.mp3",
+            )
+            app.state.active_output = "local"
+            app.state.bose_playback_state = app_owned_bose_state()
             control_client = FakePresetClient()
             app.state.bose_now_playing_client = control_client
 
@@ -1567,8 +1628,13 @@ class BoseControlApiTests(unittest.TestCase):
 
             self.assertEqual(control_client.control_actions, ["power"])
             self.assertFalse(app.state.bose_playback_state.has_app_ownership_context)
-            self.assertIsNone(status["now_playing"])
-            self.assertEqual(status["queue"], [])
+            self.assertEqual(status["now_playing"]["path"], "third.mp3")
+            self.assertEqual(app.state.bose_playback_queue.current().path, "second.mp3")
+            self.assertEqual(status["queues"]["bose"]["current_path"], "second.mp3")
+            self.assertEqual(status["active_output"], "local")
+            self.assertEqual(status["outputs"]["local"]["state"], "playing")
+            self.assertEqual(app.state.local_playback_queue.current().path, "third.mp3")
+            self.assertEqual(app.state.local_player.stop_count, 0)
 
     def test_invalid_control_action_is_rejected_by_api(self) -> None:
         with temp_music_app() as app:
@@ -1585,6 +1651,77 @@ class BoseControlApiTests(unittest.TestCase):
 
             self.assertEqual(raised.exception.status_code, 400)
             self.assertEqual(control_client.control_actions, [])
+
+
+class BoseSourceApiTests(unittest.TestCase):
+    def test_aux_and_bluetooth_preserve_queues_and_clear_bose_ownership(self) -> None:
+        for source in (BoseSource.AUX, BoseSource.BLUETOOTH):
+            with self.subTest(source=source), temp_music_app() as app:
+                app.state.local_player = FakeLocalPlayer(
+                    state="playing",
+                    path=app.state.settings.music_root / "third.mp3",
+                )
+                app.state.local_playback_queue.set_tracks(
+                    [QueueTrack(path="third.mp3", name="third.mp3")],
+                    "third.mp3",
+                )
+                app.state.bose_playback_queue.set_tracks(
+                    [
+                        QueueTrack(path="first.mp3", name="first.mp3"),
+                        QueueTrack(path="second.mp3", name="second.mp3"),
+                    ],
+                    "second.mp3",
+                )
+                app.state.bose_playback_state = app_owned_bose_state()
+                source_client = FakePresetClient()
+                app.state.bose_now_playing_client = source_client
+
+                status = route_endpoint(
+                    app,
+                    "/api/player/bose/source/{source}",
+                    "POST",
+                )(source)
+
+                self.assertEqual(source_client.selected_sources, [source])
+                self.assertFalse(app.state.bose_playback_state.has_app_ownership_context)
+                self.assertTrue(app.state.bose_playback_state.external_playback_active)
+                self.assertEqual(
+                    app.state.bose_playback_state.external_source,
+                    source.native_name,
+                )
+                self.assertEqual(app.state.bose_playback_queue.current().path, "second.mp3")
+                self.assertEqual(status["queues"]["bose"]["current_path"], "second.mp3")
+                self.assertEqual(app.state.local_playback_queue.current().path, "third.mp3")
+                self.assertEqual(status["outputs"]["local"]["state"], "playing")
+                self.assertEqual(app.state.local_player.stop_count, 0)
+
+    def test_failed_source_selection_clears_ownership_and_preserves_state(self) -> None:
+        with temp_music_app() as app:
+            app.state.local_player = FakeLocalPlayer(
+                state="playing",
+                path=app.state.settings.music_root / "third.mp3",
+            )
+            app.state.local_playback_queue.set_tracks(
+                [QueueTrack(path="third.mp3", name="third.mp3")],
+                "third.mp3",
+            )
+            app.state.bose_playback_queue.set_tracks(
+                [QueueTrack(path="second.mp3", name="second.mp3")],
+                "second.mp3",
+            )
+            app.state.bose_playback_state = app_owned_bose_state()
+            app.state.bose_now_playing_client = FakePresetClient(
+                source_error=BosePlaybackError("selection outcome unknown"),
+            )
+
+            with self.assertRaisesRegex(BosePlaybackError, "outcome unknown"):
+                _select_bose_source(app, BoseSource.AUX)
+
+            self.assertFalse(app.state.bose_playback_state.has_app_ownership_context)
+            self.assertFalse(app.state.bose_playback_state.external_playback_active)
+            self.assertEqual(app.state.bose_playback_queue.current().path, "second.mp3")
+            self.assertEqual(app.state.local_playback_queue.current().path, "third.mp3")
+            self.assertEqual(app.state.local_player.stop_count, 0)
 
 
 class BosePlaybackOwnershipTests(unittest.TestCase):
@@ -2428,12 +2565,15 @@ class FakePresetClient:
         status_xml: str = '<nowPlaying source="STANDBY"></nowPlaying>',
         fetch_error: Exception | None = None,
         select_error: Exception | None = None,
+        source_error: Exception | None = None,
     ) -> None:
         self.presets = presets or parse_presets("<presets />")
         self.status_xml = status_xml
         self.fetch_error = fetch_error
         self.select_error = select_error
+        self.source_error = source_error
         self.selected_ids: list[int] = []
+        self.selected_sources: list[BoseSource] = []
         self.control_actions: list[str] = []
 
     def fetch_presets(self) -> list[BosePreset]:
@@ -2448,6 +2588,11 @@ class FakePresetClient:
 
     def send_control_action(self, action: str) -> None:
         self.control_actions.append(action)
+
+    def select_source(self, source: BoseSource) -> None:
+        if self.source_error:
+            raise self.source_error
+        self.selected_sources.append(source)
 
     def fetch_status(self) -> BoseNowPlayingStatus:
         return parse_now_playing(self.status_xml)

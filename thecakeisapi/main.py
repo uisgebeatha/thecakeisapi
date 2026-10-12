@@ -17,6 +17,7 @@ from .bose import (
     BoseNowPlayingStatus,
     BosePlaybackError,
     BosePlaybackState,
+    BoseSource,
     SoundTouchCliClient,
     build_library_stream_url,
 )
@@ -321,15 +322,23 @@ def create_app(
                 status_code=400,
                 detail="Unsupported Bose control action",
             )
-        if app.state.bose_now_playing_client is None:
-            raise HTTPException(
-                status_code=503,
-                detail="bose_speaker_ip is not configured",
-            )
-
         try:
             with app.state.playback_lock:
-                app.state.bose_now_playing_client.send_control_action(action)
+                if action == "power":
+                    _toggle_bose_power(app)
+                else:
+                    if app.state.bose_now_playing_client is None:
+                        raise BosePlaybackError("bose_speaker_ip is not configured")
+                    app.state.bose_now_playing_client.send_control_action(action)
+                return _playback_status(app)
+        except BosePlaybackError as error:
+            raise HTTPException(status_code=503, detail=str(error)) from error
+
+    @app.post("/api/player/bose/source/{source}")
+    def select_bose_source(source: BoseSource) -> dict[str, object]:
+        try:
+            with app.state.playback_lock:
+                _select_bose_source(app, source)
                 return _playback_status(app)
         except BosePlaybackError as error:
             raise HTTPException(status_code=503, detail=str(error)) from error
@@ -995,6 +1004,59 @@ def _select_bose_preset(app: FastAPI, preset_id: int) -> None:
     )
     app.state.bose_playback_state.last_status_poll_monotonic = None
     app.state.playback_message = f"Selected Bose preset {preset_id}"
+
+
+def _toggle_bose_power(app: FastAPI) -> None:
+    app.state.bose_playback_state = BosePlaybackState()
+
+    try:
+        if app.state.bose_now_playing_client is None:
+            raise BosePlaybackError("bose_speaker_ip is not configured")
+        app.state.bose_now_playing_client.send_control_action("power")
+    except BosePlaybackError:
+        app.state.bose_playback_state.externally_stopped(
+            "Bose power command failed; playback ownership cleared",
+        )
+        app.state.playback_message = "Bose power command failed"
+        raise
+
+    app.state.bose_playback_state.externally_stopped(
+        "Bose power toggled; playback ownership cleared",
+    )
+    app.state.bose_playback_state.last_status_poll_monotonic = None
+    app.state.playback_message = "Bose power toggled"
+
+
+def _select_bose_source(app: FastAPI, source: BoseSource) -> None:
+    try:
+        selected_source = BoseSource(source)
+    except ValueError as error:
+        raise BosePlaybackError(f"Unsupported Bose source: {source}") from error
+
+    app.state.bose_playback_state = BosePlaybackState()
+    app.state.active_output = "bose"
+
+    try:
+        if app.state.bose_now_playing_client is None:
+            raise BosePlaybackError("bose_speaker_ip is not configured")
+        app.state.bose_now_playing_client.select_source(selected_source)
+    except BosePlaybackError:
+        app.state.bose_playback_state.externally_stopped(
+            f"Bose {selected_source.native_name} selection failed; "
+            "playback ownership cleared",
+        )
+        app.state.playback_message = (
+            f"Bose {selected_source.native_name} selection failed"
+        )
+        raise
+
+    app.state.bose_playback_state.externally_active(
+        f"Bose {selected_source.native_name} selected",
+        display_name=selected_source.display_name,
+        source=selected_source.native_name,
+    )
+    app.state.bose_playback_state.last_status_poll_monotonic = None
+    app.state.playback_message = f"Selected Bose source: {selected_source.native_name}"
 
 
 def _bose_playback_message(track_name: str, app: FastAPI) -> str:
